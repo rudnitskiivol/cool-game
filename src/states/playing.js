@@ -1,10 +1,11 @@
 import { viewport } from '../viewport.js';
 import { consumeTap } from '../input.js';
-import { drawGround, drawText } from '../draw.js';
+import { drawText } from '../draw.js';
 import { game, recordScore, setState } from '../game.js';
 import gameover from './gameover.js';
 import * as obstacles from '../obstacles.js';
 import * as background from '../background.js';
+import * as ground from '../ground.js';
 import * as effects from '../effects.js';
 import { drawPlayer } from '../player.js';
 import { speedForScore } from '../difficulty.js';
@@ -80,6 +81,7 @@ function beginDeath() {
   prevScorePop = scorePop;
   obstacles.freeze();
   background.freeze();
+  ground.freeze();
 }
 
 const playing = {
@@ -150,6 +152,7 @@ const playing = {
       puff.x -= worldSpeed * dt;
     }
     background.update(dt, worldSpeed);
+    ground.update(dt, worldSpeed);
 
     obstacles.update(dt, score);
     const gained = obstacles.collectPassed(PLAYER_X);
@@ -181,7 +184,7 @@ const playing = {
     background.render(ctx, alpha);
     obstacles.render(ctx, alpha);
 
-    drawGround(ctx);
+    ground.render(ctx, alpha);
 
     if (puff.t < PUFF_DURATION) {
       const p = puff.t / PUFF_DURATION;

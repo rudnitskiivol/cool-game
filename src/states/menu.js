@@ -1,8 +1,9 @@
 import { viewport } from '../viewport.js';
 import { consumeTap, getTapPos } from '../input.js';
-import { drawGround, drawMuteButton, drawText } from '../draw.js';
+import { drawMuteButton, drawText } from '../draw.js';
 import { game, setState } from '../game.js';
 import * as background from '../background.js';
+import * as ground from '../ground.js';
 import * as audio from '../audio.js';
 import { COLORS, MUTE_BTN_MARGIN, MUTE_BTN_RADIUS, OBSTACLE_SPEED_START } from '../config.js';
 import playing from './playing.js';
@@ -24,6 +25,7 @@ const menu = {
   update(dt) {
     // The backdrop keeps drifting on the menu so the first screen isn't dead.
     background.update(dt, OBSTACLE_SPEED_START);
+    ground.update(dt, OBSTACLE_SPEED_START);
 
     // Only the menu has room for a mute control: during play the whole
     // screen is the jump button, so a control there would steal taps.
@@ -40,7 +42,7 @@ const menu = {
   render(ctx, alpha) {
     background.render(ctx, alpha);
 
-    drawGround(ctx);
+    ground.render(ctx, alpha);
 
     drawText(ctx, 'COOL GAME', viewport.width / 2, viewport.height * 0.38, { size: 34 });
     drawText(ctx, 'tap to start', viewport.width / 2, viewport.height * 0.48, {

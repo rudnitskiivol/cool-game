@@ -4,6 +4,10 @@ import {
   GROUND_HEIGHT,
   OBSTACLE_MARGIN,
   OBSTACLE_WIDTH,
+  PIPE_CAP_HEIGHT,
+  PIPE_CAP_OVERHANG,
+  PIPE_HIGHLIGHT_WIDTH,
+  PIPE_HIGHLIGHT_X,
   PLAYER_HITBOX_FORGIVENESS,
   PLAYER_RADIUS,
   PLAYER_X,
@@ -68,13 +72,41 @@ export function freeze() {
   for (const o of obstacles) o.prevX = o.x;
 }
 
+// Render only — nothing below changes an obstacle's position or extent.
+// Drawn in three passes (shafts, highlights, caps) so fillStyle is set three
+// times per frame instead of three times per pipe.
+//
+// The cap is flush with the shaft (PIPE_CAP_OVERHANG is 0): hits() collides
+// against the plain OBSTACLE_WIDTH rectangle, so a cap wider than the shaft
+// would be visible pipe that the player passes straight through.
 export function render(ctx, alpha) {
+  const capX = -PIPE_CAP_OVERHANG;
+  const capW = OBSTACLE_WIDTH + PIPE_CAP_OVERHANG * 2;
+
   ctx.fillStyle = COLORS.pipe;
   for (const o of obstacles) {
     const x = o.prevX + (o.x - o.prevX) * alpha;
 
     ctx.fillRect(x, 0, OBSTACLE_WIDTH, o.gapY);
     ctx.fillRect(x, o.gapY + o.gap, OBSTACLE_WIDTH, viewport.height - (o.gapY + o.gap));
+  }
+
+  ctx.fillStyle = COLORS.pipeHighlight;
+  for (const o of obstacles) {
+    const x = o.prevX + (o.x - o.prevX) * alpha + PIPE_HIGHLIGHT_X;
+
+    ctx.fillRect(x, 0, PIPE_HIGHLIGHT_WIDTH, o.gapY);
+    ctx.fillRect(x, o.gapY + o.gap, PIPE_HIGHLIGHT_WIDTH, viewport.height - (o.gapY + o.gap));
+  }
+
+  ctx.fillStyle = COLORS.pipeCap;
+  for (const o of obstacles) {
+    const x = o.prevX + (o.x - o.prevX) * alpha + capX;
+
+    // OBSTACLE_MARGIN keeps both shafts far taller than the cap, so neither
+    // band can spill past the end of the pipe it belongs to.
+    ctx.fillRect(x, o.gapY - PIPE_CAP_HEIGHT, capW, PIPE_CAP_HEIGHT);
+    ctx.fillRect(x, o.gapY + o.gap, capW, PIPE_CAP_HEIGHT);
   }
 }
 

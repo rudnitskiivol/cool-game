@@ -50,7 +50,34 @@ export const COLORS = {
   eye: '#221d2e',
   flash: '#ffffff',
   puff: '#ffe7ad',
+  // Pipe shading. Both are lighter than the shaft, so the caps raise the
+  // pipes' contrast against the sky rather than muddying it.
+  pipeCap: '#74e79b',
+  pipeHighlight: '#61df8d',
+  // One shared line colour for the ground's top edge and its scrolling
+  // dashes: barely above the ground fill, because motion is what makes a
+  // low-contrast mark readable, not contrast.
+  groundLine: '#232a47',
 };
+
+// --- Pipe caps -------------------------------------------------------------
+// A band at each gap edge, plus a vertical highlight stripe down the shaft.
+// PIPE_CAP_OVERHANG IS DELIBERATELY 0: collision in obstacles.js hits() tests
+// the plain OBSTACLE_WIDTH shaft, so any horizontal overhang would draw pipe
+// that the player can see but pass straight through. The cap is flush.
+export const PIPE_CAP_OVERHANG = 0;
+export const PIPE_CAP_HEIGHT = 16;
+export const PIPE_HIGHLIGHT_X = 9; // inset from the pipe's left edge
+export const PIPE_HIGHLIGHT_WIDTH = 9;
+
+// --- Scrolling ground ------------------------------------------------------
+// The ground shares the pipes' depth, so it scrolls at exactly their speed.
+export const GROUND_SPEED_FACTOR = 1;
+export const GROUND_EDGE_HEIGHT = 3;
+export const GROUND_STRIPE_TILE = 52;
+export const GROUND_STRIPE_WIDTH = 26;
+export const GROUND_STRIPE_HEIGHT = 5;
+export const GROUND_STRIPE_Y = 16; // below the ground's top edge
 
 // --- HUD layout (kept here so the score pop can scale around a known anchor) ---
 export const HUD_SCORE_Y = 64;
