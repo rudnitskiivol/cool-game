@@ -38,3 +38,25 @@ startLoop({
     effects.renderFlash(ctx, alpha);
   },
 });
+
+// PWA service-worker registration, production builds only. `vite dev` never
+// bundles a service worker (vite.config.js sets devOptions.enabled: false),
+// but the PROD guard is kept here too so this never accidentally runs
+// against the dev server's module graph -- a SW caching half-built modules
+// while the game is being tuned daily would be a nightmare to debug.
+if (import.meta.env.PROD) {
+  import('virtual:pwa-register').then(({ registerSW }) => {
+    const updateSW = registerSW({
+      immediate: true,
+      // If the tab is left open (this is an installed, fullscreen game --
+      // people don't reliably reload it), poll hourly so a new deployment
+      // still supersedes the running one instead of only updating on the
+      // next cold start.
+      onRegisteredSW(_url, registration) {
+        if (!registration) return;
+        setInterval(() => registration.update(), 60 * 60 * 1000);
+      },
+    });
+    void updateSW;
+  });
+}
