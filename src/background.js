@@ -7,6 +7,7 @@
 // backdrop costs two fills a frame and allocates nothing.
 import { viewport } from './viewport.js';
 import { BG_LAYERS, GROUND_HEIGHT } from './config.js';
+import { current as theme } from './theme.js';
 
 // Allocated once at module load, never per frame.
 const offsets = new Float32Array(BG_LAYERS.length);
@@ -43,7 +44,7 @@ export function render(ctx, alpha) {
     const end = cur < prev ? cur + layer.tile : cur;
     const offset = (prev + (end - prev) * alpha) % layer.tile;
 
-    ctx.fillStyle = layer.color;
+    ctx.fillStyle = theme[layer.themeKey];
     ctx.beginPath();
 
     for (let tileX = -layer.tile; tileX < viewport.width + layer.tile; tileX += layer.tile) {

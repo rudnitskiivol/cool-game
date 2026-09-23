@@ -7,6 +7,7 @@ import * as ground from '../ground.js';
 import * as audio from '../audio.js';
 import { COLORS, MUTE_BTN_MARGIN, MUTE_BTN_RADIUS, OBSTACLE_SPEED_START } from '../config.js';
 import playing from './playing.js';
+import hub from './hub.js';
 
 // Top-right corner, in virtual units. Computed from the current viewport
 // width rather than stored, since width varies with device aspect ratio.
@@ -21,6 +22,22 @@ function hitsMuteButton(x, y) {
   return dx * dx + dy * dy <= MUTE_BTN_RADIUS * MUTE_BTN_RADIUS;
 }
 
+// A plain text button below the score readout. Rect hit-test in virtual
+// units, same idiom as the mute button's circle test above.
+const HUB_BTN_Y = 0.66;
+const HUB_BTN_HALF_W = 100;
+const HUB_BTN_HALF_H = 16;
+
+function hitsHubButton(x, y) {
+  const by = viewport.height * HUB_BTN_Y;
+  return (
+    x >= viewport.width / 2 - HUB_BTN_HALF_W &&
+    x <= viewport.width / 2 + HUB_BTN_HALF_W &&
+    y >= by - HUB_BTN_HALF_H &&
+    y <= by + HUB_BTN_HALF_H
+  );
+}
+
 const menu = {
   update(dt) {
     // The backdrop keeps drifting on the menu so the first screen isn't dead.
@@ -33,6 +50,8 @@ const menu = {
       const { x, y } = getTapPos();
       if (hitsMuteButton(x, y)) {
         audio.toggleMute();
+      } else if (hitsHubButton(x, y)) {
+        setState(hub);
       } else {
         setState(playing);
       }
@@ -49,9 +68,13 @@ const menu = {
       size: 16,
       color: COLORS.muted,
     });
-    drawText(ctx, `best ${game.best}`, viewport.width / 2, viewport.height * 0.56, {
+    drawText(ctx, `best ${game.best}  ·  ${game.coins} coins`, viewport.width / 2, viewport.height * 0.56, {
       size: 14,
       color: COLORS.muted,
+    });
+    drawText(ctx, 'Locations & Style', viewport.width / 2, viewport.height * HUB_BTN_Y, {
+      size: 16,
+      color: COLORS.text,
     });
 
     const { x, y } = muteButtonPos();

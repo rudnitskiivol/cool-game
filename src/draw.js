@@ -1,11 +1,12 @@
 import { COLORS, GROUND_HEIGHT, MUTE_BTN_RADIUS, SHAKE_EDGE_MARGIN } from './config.js';
 import { viewport } from './viewport.js';
+import { current as theme } from './theme.js';
 
 // The ground is overdrawn past every edge by the shake margin: without it a
 // vertical shake would lift the ground and expose a sliver of sky along the
 // bottom of the screen at the exact moment the player is looking at it.
 export function drawGround(ctx) {
-  ctx.fillStyle = COLORS.ground;
+  ctx.fillStyle = theme.ground;
   ctx.fillRect(
     -SHAKE_EDGE_MARGIN,
     viewport.height - GROUND_HEIGHT,

@@ -1,10 +1,13 @@
-import { COLORS } from './config.js';
 import { game, setState } from './game.js';
 import { initInput } from './input.js';
 import { startLoop } from './loop.js';
 import { applyTransform, resizeViewport } from './viewport.js';
 import * as effects from './effects.js';
+import { current as theme, setLocation, setSkin } from './theme.js';
 import menu from './states/menu.js';
+
+setLocation(game.location);
+setSkin(game.skin);
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -24,7 +27,7 @@ startLoop({
   },
   render: (alpha) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = COLORS.sky;
+    ctx.fillStyle = theme.sky;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Shake is a camera transform composed on top of the viewport transform.

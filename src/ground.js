@@ -11,7 +11,6 @@
 import { viewport } from './viewport.js';
 import { drawGround } from './draw.js';
 import {
-  COLORS,
   GROUND_EDGE_HEIGHT,
   GROUND_HEIGHT,
   GROUND_SPEED_FACTOR,
@@ -21,6 +20,7 @@ import {
   GROUND_STRIPE_Y,
   SHAKE_EDGE_MARGIN,
 } from './config.js';
+import { current as theme } from './theme.js';
 
 let offset = 0;
 let prevOffset = 0;
@@ -42,7 +42,7 @@ export function render(ctx, alpha) {
   const top = viewport.height - GROUND_HEIGHT;
   const width = viewport.width + SHAKE_EDGE_MARGIN * 2;
 
-  ctx.fillStyle = COLORS.groundLine;
+  ctx.fillStyle = theme.groundLine;
 
   // Static top edge: it defines the ground/sky boundary. Scrolling it would
   // look identical, so it doesn't.

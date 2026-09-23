@@ -5,7 +5,6 @@
 // rotation means the squash/stretch always runs along the WORLD vertical
 // (the direction of motion), not along the tilted body axis.
 import {
-  COLORS,
   PLAYER_BEAK_HALF,
   PLAYER_BEAK_LENGTH,
   PLAYER_EYE_RADIUS,
@@ -17,7 +16,7 @@ import {
 
 const TAU = Math.PI * 2;
 
-export function drawPlayer(ctx, x, y, angle, squash) {
+export function drawPlayer(ctx, x, y, angle, squash, skin) {
   const stretch = SQUASH_AMOUNT * squash;
 
   ctx.save();
@@ -25,7 +24,7 @@ export function drawPlayer(ctx, x, y, angle, squash) {
   if (stretch !== 0) ctx.scale(1 - stretch * 0.7, 1 + stretch);
   ctx.rotate(angle);
 
-  ctx.fillStyle = COLORS.beak;
+  ctx.fillStyle = skin.beak;
   ctx.beginPath();
   ctx.moveTo(PLAYER_RADIUS + PLAYER_BEAK_LENGTH, 0);
   ctx.lineTo(PLAYER_RADIUS - 3, -PLAYER_BEAK_HALF);
@@ -33,12 +32,12 @@ export function drawPlayer(ctx, x, y, angle, squash) {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = COLORS.player;
+  ctx.fillStyle = skin.player;
   ctx.beginPath();
   ctx.arc(0, 0, PLAYER_RADIUS, 0, TAU);
   ctx.fill();
 
-  ctx.fillStyle = COLORS.eye;
+  ctx.fillStyle = skin.eye;
   ctx.beginPath();
   ctx.arc(PLAYER_EYE_X, PLAYER_EYE_Y, PLAYER_EYE_RADIUS, 0, TAU);
   ctx.fill();
