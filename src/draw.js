@@ -15,6 +15,10 @@ export function drawGround(ctx) {
   );
 }
 
+function font(size, weight) {
+  return `${weight} ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+}
+
 export function drawText(ctx, text, x, y, options = {}) {
   const {
     size = 20,
@@ -24,10 +28,28 @@ export function drawText(ctx, text, x, y, options = {}) {
   } = options;
 
   ctx.fillStyle = color;
-  ctx.font = `${weight} ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  ctx.font = font(size, weight);
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
+}
+
+// Greedy word wrap, measured with the same font drawText() will use.
+export function wrapText(ctx, text, maxWidth, size, weight = '600') {
+  ctx.font = font(size, weight);
+  const lines = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 // A small speaker glyph drawn with plain paths (no font-dependent icon), so

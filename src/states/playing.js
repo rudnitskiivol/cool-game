@@ -42,9 +42,17 @@ import {
   SQUASH_DURATION,
 } from '../config.js';
 
+// How long a story level's title stays up before fading out.
+const LEVEL_TITLE_TIME = 2.2;
+
 // angle/squash are presentation-only; the simulation still knows nothing
 // about them. Each keeps a prev value so render() can interpolate.
 const player = { y: 0, prevY: 0, vy: 0, angle: 0, prevAngle: 0, squash: 0, prevSquash: 0 };
+
+// null for the endless mode. For a story level (see states/story.js):
+// { title, goal, location, difficultyOffset, onComplete, onFail }.
+let level = null;
+let levelT = 0;
 
 // A single ring left behind at the flap point. It drifts left with the world
 // so it reads as "the air the bird pushed off", not a HUD decal.
@@ -88,8 +96,10 @@ function beginDeath() {
 }
 
 const playing = {
-  enter() {
-    setLocation(game.location);
+  enter(storyLevel = null) {
+    level = storyLevel;
+    levelT = 0;
+    setLocation(level ? level.location : game.location);
 
     player.y = viewport.height * 0.4;
     player.prevY = player.y;
@@ -111,9 +121,14 @@ const playing = {
   update(dt) {
     if (dying) {
       dyingT += dt;
-      if (dyingT >= DEATH_FREEZE) setState(gameover);
+      if (dyingT >= DEATH_FREEZE) {
+        if (level) level.onFail();
+        else setState(gameover);
+      }
       return;
     }
+
+    levelT += dt;
 
     player.prevAngle = player.angle;
     player.prevSquash = player.squash;
@@ -157,7 +172,9 @@ const playing = {
     if (player.squash > 0) player.squash = Math.max(0, player.squash - dt / SQUASH_DURATION);
     if (scorePop > 0) scorePop = Math.max(0, scorePop - dt / SCORE_POP_DURATION);
 
-    const worldSpeed = speedForScore(score);
+    // Later story levels start partway up the difficulty ramp.
+    const difficulty = score + (level ? level.difficultyOffset : 0);
+    const worldSpeed = speedForScore(difficulty);
     if (puff.t < PUFF_DURATION) {
       puff.t += dt;
       puff.x -= worldSpeed * dt;
@@ -165,7 +182,7 @@ const playing = {
     background.update(dt, worldSpeed);
     ground.update(dt, worldSpeed);
 
-    obstacles.update(dt, score);
+    obstacles.update(dt, difficulty);
     const gained = obstacles.collectPassed(PLAYER_X);
     if (gained > 0) scorePop = 1;
     score += gained;
@@ -175,14 +192,23 @@ const playing = {
 
     if (player.y >= floor || obstacles.hits(player.y)) {
       player.y = Math.min(player.y, floor);
+      beginDeath();
+      audio.death();
+      // Story crashes cost affection, not a run: they don't touch best/coins.
+      if (level) return;
       // Read before recordScore(), which overwrites game.best the instant
       // this run beats it.
       const isNewBest = score > game.best;
       recordScore(score);
       earnCoins(score);
-      beginDeath();
-      audio.death();
       if (isNewBest) audio.newBest();
+      return;
+    }
+
+    if (level && score >= level.goal) {
+      earnCoins(score);
+      audio.newBest();
+      level.onComplete();
     }
   },
 
@@ -231,10 +257,16 @@ const playing = {
       drawText(ctx, String(score), viewport.width / 2, HUD_SCORE_Y, { size: HUD_SCORE_SIZE });
     }
 
-    drawText(ctx, `best ${game.best}`, viewport.width / 2, HUD_BEST_Y, {
+    drawText(ctx, level ? `of ${level.goal}` : `best ${game.best}`, viewport.width / 2, HUD_BEST_Y, {
       size: HUD_BEST_SIZE,
       color: COLORS.muted,
     });
+
+    if (level && levelT < LEVEL_TITLE_TIME) {
+      ctx.globalAlpha = Math.min(1, (LEVEL_TITLE_TIME - levelT) / 0.5);
+      drawText(ctx, level.title, viewport.width / 2, HUD_BEST_Y + 40, { size: 18 });
+      ctx.globalAlpha = 1;
+    }
   },
 };
 
