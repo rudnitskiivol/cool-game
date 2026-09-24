@@ -1,6 +1,5 @@
 // Unlockable locations and player skins. Purely data — theme.js applies a
-// location's palette, obstacles.js reads its obstacleKinds/twinGapWeight,
-// game.js tracks which ids are unlocked/selected.
+// location's palette, game.js tracks which ids are unlocked/selected.
 //
 // `theme` only overrides the keys that are allowed to vary by location; any
 // key it omits falls back to the base COLORS in config.js (see theme.js).
@@ -10,8 +9,6 @@ export const LOCATIONS = [
     name: 'Classic Sky',
     cost: 0,
     theme: {},
-    obstacleKinds: ['pipe'],
-    twinGapWeight: 0,
   },
   {
     id: 'canyon',
@@ -27,8 +24,6 @@ export const LOCATIONS = [
       pipeCap: '#f2955f',
       pipeHighlight: '#ec8654',
     },
-    obstacleKinds: ['pipe', 'twinGap'],
-    twinGapWeight: 0.4,
   },
   {
     id: 'neon',
@@ -44,8 +39,6 @@ export const LOCATIONS = [
       pipeCap: '#f08ef5',
       pipeHighlight: '#e56de8',
     },
-    obstacleKinds: ['pipe', 'twinGap'],
-    twinGapWeight: 0.7,
   },
 ];
 

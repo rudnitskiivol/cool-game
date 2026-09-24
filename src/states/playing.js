@@ -1,10 +1,11 @@
 import { viewport } from '../viewport.js';
-import { consumeTap, getPointerX, isPointerDown } from '../input.js';
-import { drawText } from '../draw.js';
+import { consumeTap, getTapPos } from '../input.js';
+import { drawBackLabel, drawText, hitsBackLabel } from '../draw.js';
 import { earnCoins, game, recordScore, setState } from '../game.js';
-import { findLocation, findSkin } from '../content.js';
+import { findSkin } from '../content.js';
 import { setLocation } from '../theme.js';
 import gameover from './gameover.js';
+import menu from './menu.js';
 import * as obstacles from '../obstacles.js';
 import * as background from '../background.js';
 import * as ground from '../ground.js';
@@ -23,7 +24,6 @@ import {
   HUD_SCORE_SIZE,
   HUD_SCORE_Y,
   JUMP_IMPULSE,
-  PLAYER_DRIFT_RATE,
   PLAYER_RADIUS,
   PLAYER_TILT_DOWN,
   PLAYER_TILT_FALL_RATE,
@@ -31,8 +31,6 @@ import {
   PLAYER_TILT_RISE_RATE,
   PLAYER_TILT_UP,
   PLAYER_X,
-  PLAYER_X_MAX,
-  PLAYER_X_MIN,
   PUFF_ALPHA,
   PUFF_DURATION,
   PUFF_END_RADIUS,
@@ -46,18 +44,7 @@ import {
 
 // angle/squash are presentation-only; the simulation still knows nothing
 // about them. Each keeps a prev value so render() can interpolate.
-const player = {
-  x: 0,
-  prevX: 0,
-  driftTargetX: 0,
-  y: 0,
-  prevY: 0,
-  vy: 0,
-  angle: 0,
-  prevAngle: 0,
-  squash: 0,
-  prevSquash: 0,
-};
+const player = { y: 0, prevY: 0, vy: 0, angle: 0, prevAngle: 0, squash: 0, prevSquash: 0 };
 
 // A single ring left behind at the flap point. It drifts left with the world
 // so it reads as "the air the bird pushed off", not a HUD decal.
@@ -90,7 +77,6 @@ function beginDeath() {
 
   // Everything stops moving this frame, so collapse prev onto current or the
   // frozen frame would shiver as `alpha` keeps sweeping.
-  player.prevX = player.x;
   player.prevY = player.y;
   player.prevAngle = player.angle;
   player.prevSquash = player.squash;
@@ -105,9 +91,6 @@ const playing = {
   enter() {
     setLocation(game.location);
 
-    player.x = PLAYER_X;
-    player.prevX = player.x;
-    player.driftTargetX = player.x;
     player.y = viewport.height * 0.4;
     player.prevY = player.y;
     player.vy = 0;
@@ -122,9 +105,7 @@ const playing = {
     dying = false;
     dyingT = 0;
     effects.reset();
-
-    const location = findLocation(game.location);
-    obstacles.reset({ kinds: location.obstacleKinds, twinGapWeight: location.twinGapWeight });
+    obstacles.reset();
   },
 
   update(dt) {
@@ -140,20 +121,20 @@ const playing = {
     puff.prevX = puff.x;
 
     if (consumeTap()) {
+      const { x, y } = getTapPos();
+      if (hitsBackLabel(x, y)) {
+        setState(menu);
+        return;
+      }
+
       player.vy = JUMP_IMPULSE;
       player.squash = 1;
       puff.t = 0;
-      puff.x = player.x;
-      puff.prevX = player.x;
+      puff.x = PLAYER_X;
+      puff.prevX = PLAYER_X;
       puff.y = player.y;
       audio.flap();
     }
-
-    player.prevX = player.x;
-    if (isPointerDown()) {
-      player.driftTargetX = Math.min(PLAYER_X_MAX, Math.max(PLAYER_X_MIN, getPointerX()));
-    }
-    player.x += (player.driftTargetX - player.x) * (1 - Math.exp(-PLAYER_DRIFT_RATE * dt));
 
     player.prevY = player.y;
     player.vy += GRAVITY * dt;
@@ -185,14 +166,14 @@ const playing = {
     ground.update(dt, worldSpeed);
 
     obstacles.update(dt, score);
-    const gained = obstacles.collectPassed(player.x);
+    const gained = obstacles.collectPassed(PLAYER_X);
     if (gained > 0) scorePop = 1;
     score += gained;
     // Pitch nudges up with the run's score, so a streak of pipes feels like
     // it's building rather than repeating the same blip.
     if (gained > 0) audio.score(score);
 
-    if (player.y >= floor || obstacles.hits(player.x, player.y)) {
+    if (player.y >= floor || obstacles.hits(player.y)) {
       player.y = Math.min(player.y, floor);
       // Read before recordScore(), which overwrites game.best the instant
       // this run beats it.
@@ -208,7 +189,6 @@ const playing = {
   // The world without the HUD. Game over reuses this to keep the frozen
   // death frame on screen instead of hard-cutting to an empty scene.
   renderWorld(ctx, alpha) {
-    const x = player.prevX + (player.x - player.prevX) * alpha;
     const y = player.prevY + (player.y - player.prevY) * alpha;
     const angle = player.prevAngle + (player.angle - player.prevAngle) * alpha;
     const squash = player.prevSquash + (player.squash - player.prevSquash) * alpha;
@@ -230,11 +210,13 @@ const playing = {
       ctx.globalAlpha = 1;
     }
 
-    drawPlayer(ctx, x, y, angle, squash, findSkin(game.skin).colors);
+    drawPlayer(ctx, PLAYER_X, y, angle, squash, findSkin(game.skin).colors);
   },
 
   render(ctx, alpha) {
     playing.renderWorld(ctx, alpha);
+
+    drawBackLabel(ctx, '‹ menu');
 
     // Scaled about its own centre, so the pop never shifts the HUD layout.
     const pop = prevScorePop + (scorePop - prevScorePop) * alpha;

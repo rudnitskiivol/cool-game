@@ -12,14 +12,6 @@ export const PLAYER_X = 90;
 export const PLAYER_RADIUS = 14;
 export const GROUND_HEIGHT = 64;
 
-// --- Horizontal drift -------------------------------------------------------
-// The player can steer sideways within this corridor while holding the
-// pointer down. Wide enough that the two halves of a twin-gap obstacle (see
-// OBSTACLE_WIDTH below) are clearly separable targets.
-export const PLAYER_X_MIN = 55;
-export const PLAYER_X_MAX = 165;
-export const PLAYER_DRIFT_RATE = 9; // exp-approach rate/s, same idiom as tilt
-
 export const RESTART_LOCKOUT = 0.4;
 
 // Obstacles (pipe pairs).

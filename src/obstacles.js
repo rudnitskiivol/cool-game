@@ -9,23 +9,18 @@ import {
   PIPE_HIGHLIGHT_X,
   PLAYER_HITBOX_FORGIVENESS,
   PLAYER_RADIUS,
+  PLAYER_X,
 } from './config.js';
 import { gapForScore, spacingForScore, speedForScore } from './difficulty.js';
 import { current as theme } from './theme.js';
 
-// Pipe pairs: { x, prevX, kind, scored, ... }. `kind` is either 'pipe' (the
-// original full-width column, one gapY) or 'twinGap' (the column split into
-// two independent half-width strips, each with its own gapY — this is what
-// makes horizontal drift matter, since the player must line up with whichever
-// half their trajectory suits). Kept as a plain array — a handful of live
-// obstacles doesn't need pooling.
+// Pipe pairs: { x, prevX, gapY, gap, scored }. gapY is the y of the top edge
+// of the gap; the gap's bottom edge is gapY + gap. `gap` is captured once at
+// spawn time from the current difficulty ramp — it must NOT be re-read from
+// a global later, or every on-screen pipe would resize around the player as
+// the ramp keeps moving. Kept as a plain array — a handful of live obstacles
+// doesn't need pooling.
 let obstacles = [];
-
-// Which kinds the active location allows, and how often to roll a twin-gap
-// over a classic pipe. A run's location never changes mid-flight, so this is
-// captured once by reset() instead of threaded through every update() call.
-let allowTwinGap = false;
-let twinGapWeight = 0;
 
 function floorY() {
   return viewport.height - GROUND_HEIGHT;
@@ -37,49 +32,13 @@ function randomGapY(gap) {
   return min + Math.random() * (max - min);
 }
 
-function pickKind() {
-  return allowTwinGap && Math.random() < twinGapWeight ? 'twinGap' : 'pipe';
+function spawn(x, gap) {
+  obstacles.push({ x, prevX: x, gapY: randomGapY(gap), gap, scored: false });
 }
 
-function spawn(x, score) {
-  const kind = pickKind();
-  const gap = gapForScore(score);
-
-  if (kind === 'twinGap') {
-    const halfWidth = OBSTACLE_WIDTH / 2;
-    obstacles.push({
-      x,
-      prevX: x,
-      kind,
-      scored: false,
-      halfWidth,
-      left: { gapY: randomGapY(gap), gap },
-      right: { gapY: randomGapY(gap), gap },
-    });
-  } else {
-    obstacles.push({ x, prevX: x, kind, scored: false, gapY: randomGapY(gap), gap });
-  }
-}
-
-// One or two vertical strips per obstacle (two for twinGap), each an
-// independent gap column, so render/hits can treat both kinds uniformly.
-function strips(o, x) {
-  if (o.kind === 'twinGap') {
-    return [
-      { x, width: o.halfWidth, gapY: o.left.gapY, gap: o.left.gap },
-      { x: x + o.halfWidth, width: o.halfWidth, gapY: o.right.gapY, gap: o.right.gap },
-    ];
-  }
-  return [{ x, width: OBSTACLE_WIDTH, gapY: o.gapY, gap: o.gap }];
-}
-
-// options: { kinds: string[], twinGapWeight: number } — from the active
-// location (see content.js). Defaults to classic pipes only.
-export function reset(options = {}) {
-  allowTwinGap = (options.kinds ?? ['pipe']).includes('twinGap');
-  twinGapWeight = options.twinGapWeight ?? 0;
+export function reset() {
   obstacles = [];
-  spawn(viewport.width + OBSTACLE_WIDTH, 0);
+  spawn(viewport.width + OBSTACLE_WIDTH, gapForScore(0));
 }
 
 export function update(dt, score) {
@@ -102,7 +61,7 @@ export function update(dt, score) {
   const last = obstacles[obstacles.length - 1];
   if (!last || last.x <= viewport.width - spacing) {
     const x = Math.max(viewport.width, (last ? last.x : viewport.width) + spacing);
-    spawn(x, score);
+    spawn(x, gapForScore(score));
   }
 }
 
@@ -118,40 +77,36 @@ export function freeze() {
 // times per frame instead of three times per pipe.
 //
 // The cap is flush with the shaft (PIPE_CAP_OVERHANG is 0): hits() collides
-// against the plain strip-width rectangle, so a cap wider than the shaft
+// against the plain OBSTACLE_WIDTH rectangle, so a cap wider than the shaft
 // would be visible pipe that the player passes straight through.
 export function render(ctx, alpha) {
   const capX = -PIPE_CAP_OVERHANG;
+  const capW = OBSTACLE_WIDTH + PIPE_CAP_OVERHANG * 2;
 
   ctx.fillStyle = theme.pipe;
   for (const o of obstacles) {
     const x = o.prevX + (o.x - o.prevX) * alpha;
-    for (const s of strips(o, x)) {
-      ctx.fillRect(s.x, 0, s.width, s.gapY);
-      ctx.fillRect(s.x, s.gapY + s.gap, s.width, viewport.height - (s.gapY + s.gap));
-    }
+
+    ctx.fillRect(x, 0, OBSTACLE_WIDTH, o.gapY);
+    ctx.fillRect(x, o.gapY + o.gap, OBSTACLE_WIDTH, viewport.height - (o.gapY + o.gap));
   }
 
   ctx.fillStyle = theme.pipeHighlight;
   for (const o of obstacles) {
-    const x = o.prevX + (o.x - o.prevX) * alpha;
-    for (const s of strips(o, x)) {
-      const hx = s.x + PIPE_HIGHLIGHT_X;
-      ctx.fillRect(hx, 0, PIPE_HIGHLIGHT_WIDTH, s.gapY);
-      ctx.fillRect(hx, s.gapY + s.gap, PIPE_HIGHLIGHT_WIDTH, viewport.height - (s.gapY + s.gap));
-    }
+    const x = o.prevX + (o.x - o.prevX) * alpha + PIPE_HIGHLIGHT_X;
+
+    ctx.fillRect(x, 0, PIPE_HIGHLIGHT_WIDTH, o.gapY);
+    ctx.fillRect(x, o.gapY + o.gap, PIPE_HIGHLIGHT_WIDTH, viewport.height - (o.gapY + o.gap));
   }
 
   ctx.fillStyle = theme.pipeCap;
   for (const o of obstacles) {
-    const x = o.prevX + (o.x - o.prevX) * alpha;
-    for (const s of strips(o, x)) {
-      const capW = s.width + PIPE_CAP_OVERHANG * 2;
-      // OBSTACLE_MARGIN keeps both shafts far taller than the cap, so neither
-      // band can spill past the end of the pipe it belongs to.
-      ctx.fillRect(s.x + capX, s.gapY - PIPE_CAP_HEIGHT, capW, PIPE_CAP_HEIGHT);
-      ctx.fillRect(s.x + capX, s.gapY + s.gap, capW, PIPE_CAP_HEIGHT);
-    }
+    const x = o.prevX + (o.x - o.prevX) * alpha + capX;
+
+    // OBSTACLE_MARGIN keeps both shafts far taller than the cap, so neither
+    // band can spill past the end of the pipe it belongs to.
+    ctx.fillRect(x, o.gapY - PIPE_CAP_HEIGHT, capW, PIPE_CAP_HEIGHT);
+    ctx.fillRect(x, o.gapY + o.gap, capW, PIPE_CAP_HEIGHT);
   }
 }
 
@@ -163,17 +118,15 @@ function circleHitsRect(cx, cy, r, rx, ry, rw, rh) {
   return dx * dx + dy * dy < r * r;
 }
 
-export function hits(playerX, playerY) {
+export function hits(playerY) {
   const r = PLAYER_RADIUS - PLAYER_HITBOX_FORGIVENESS;
 
   for (const o of obstacles) {
-    for (const s of strips(o, o.x)) {
-      if (
-        circleHitsRect(playerX, playerY, r, s.x, 0, s.width, s.gapY) ||
-        circleHitsRect(playerX, playerY, r, s.x, s.gapY + s.gap, s.width, floorY() - (s.gapY + s.gap))
-      ) {
-        return true;
-      }
+    if (
+      circleHitsRect(PLAYER_X, playerY, r, o.x, 0, OBSTACLE_WIDTH, o.gapY) ||
+      circleHitsRect(PLAYER_X, playerY, r, o.x, o.gapY + o.gap, OBSTACLE_WIDTH, floorY() - (o.gapY + o.gap))
+    ) {
+      return true;
     }
   }
 

@@ -71,3 +71,25 @@ export function drawMuteButton(ctx, x, y, muted) {
 
   ctx.restore();
 }
+
+// A plain top-left text link back to the menu, used by every screen that
+// isn't the menu itself (hub, playing, game over). The hit box is padded
+// generously rather than measured against the rendered text, since canvas
+// text width varies by font/device and this only needs to cover the label.
+export const BACK_LABEL_X = 16;
+export const BACK_LABEL_Y = 28;
+const BACK_HIT_HALF_W = 70;
+const BACK_HIT_HALF_H = 18;
+
+export function drawBackLabel(ctx, label) {
+  drawText(ctx, label, BACK_LABEL_X, BACK_LABEL_Y, { size: 16, align: 'left', color: COLORS.muted });
+}
+
+export function hitsBackLabel(x, y) {
+  return (
+    x >= BACK_LABEL_X - 10 &&
+    x <= BACK_LABEL_X + BACK_HIT_HALF_W &&
+    y >= BACK_LABEL_Y - BACK_HIT_HALF_H &&
+    y <= BACK_LABEL_Y + BACK_HIT_HALF_H
+  );
+}

@@ -12,51 +12,21 @@ let tapQueued = false;
 let tapX = 0;
 let tapY = 0;
 
-// Continuous hold-and-drag state, read every simulation tick (unlike the tap
-// queue, this is never consumed) so playing.js can steer the player toward
-// wherever the pointer currently is while it's held down.
-let pointerDown = false;
-let pointerVirtualX = 0;
-
-function toVirtualX(canvas, clientX) {
-  const rect = canvas.getBoundingClientRect();
-  const cssX = clientX - rect.left;
-  return (cssX - viewport.offsetX) / viewport.scale;
-}
-
 export function initInput(canvas) {
   canvas.addEventListener(
     'pointerdown',
     (e) => {
       e.preventDefault();
       tapQueued = true;
-      pointerDown = true;
 
       const rect = canvas.getBoundingClientRect();
       const cssX = e.clientX - rect.left;
       const cssY = e.clientY - rect.top;
       tapX = (cssX - viewport.offsetX) / viewport.scale;
       tapY = cssY / viewport.scale;
-      pointerVirtualX = tapX;
     },
     { passive: false },
   );
-
-  canvas.addEventListener(
-    'pointermove',
-    (e) => {
-      if (!pointerDown) return;
-      pointerVirtualX = toVirtualX(canvas, e.clientX);
-    },
-    { passive: false },
-  );
-
-  const release = () => {
-    pointerDown = false;
-  };
-  canvas.addEventListener('pointerup', release, { passive: false });
-  canvas.addEventListener('pointercancel', release, { passive: false });
-  canvas.addEventListener('pointerleave', release, { passive: false });
 }
 
 export function consumeTap() {
@@ -75,12 +45,4 @@ export function getTapPos() {
 
 export function clearTap() {
   tapQueued = false;
-}
-
-export function isPointerDown() {
-  return pointerDown;
-}
-
-export function getPointerX() {
-  return pointerVirtualX;
 }

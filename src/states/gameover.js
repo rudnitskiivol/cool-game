@@ -1,6 +1,6 @@
 import { viewport } from '../viewport.js';
-import { clearTap, consumeTap } from '../input.js';
-import { drawText } from '../draw.js';
+import { clearTap, consumeTap, getTapPos } from '../input.js';
+import { drawBackLabel, drawText, hitsBackLabel } from '../draw.js';
 import { game, setState } from '../game.js';
 import {
   COLORS,
@@ -10,6 +10,7 @@ import {
   SHAKE_EDGE_MARGIN,
 } from '../config.js';
 import playing from './playing.js';
+import menu from './menu.js';
 
 let since = 0;
 let prevSince = 0;
@@ -25,7 +26,11 @@ const gameover = {
   update(dt) {
     prevSince = since;
     since += dt;
-    if (since >= RESTART_LOCKOUT && consumeTap()) setState(playing);
+
+    if (since >= RESTART_LOCKOUT && consumeTap()) {
+      const { x, y } = getTapPos();
+      setState(hitsBackLabel(x, y) ? menu : playing);
+    }
   },
 
   render(ctx, alpha) {
@@ -58,6 +63,7 @@ const gameover = {
         size: 16,
         color: COLORS.muted,
       });
+      drawBackLabel(ctx, '‹ menu');
     }
 
     ctx.globalAlpha = 1;

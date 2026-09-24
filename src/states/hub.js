@@ -2,7 +2,7 @@
 // rect/circle hit tests against the tap position, no DOM.
 import { viewport } from '../viewport.js';
 import { consumeTap, getTapPos } from '../input.js';
-import { drawText } from '../draw.js';
+import { drawBackLabel, drawText, hitsBackLabel } from '../draw.js';
 import {
   game,
   selectLocation,
@@ -17,11 +17,6 @@ import * as background from '../background.js';
 import * as ground from '../ground.js';
 import { COLORS, OBSTACLE_SPEED_START } from '../config.js';
 import menu from './menu.js';
-
-const BACK_X = 16;
-const BACK_Y = 28;
-const BACK_HALF_W = 44;
-const BACK_HALF_H = 16;
 
 const ROW_TOP = 0.28;
 const ROW_STEP = 0.075;
@@ -42,10 +37,6 @@ function skinPos(i) {
     x: viewport.width / 2 - totalWidth / 2 + i * SKIN_GAP,
     y: viewport.height * SKIN_TOP,
   };
-}
-
-function hitsBack(x, y) {
-  return x >= BACK_X - 10 && x <= BACK_X + BACK_HALF_W * 2 && y >= BACK_Y - BACK_HALF_H && y <= BACK_Y + BACK_HALF_H;
 }
 
 function hitsRow(x, y, rowY) {
@@ -91,7 +82,7 @@ const hub = {
     if (consumeTap()) {
       const { x, y } = getTapPos();
 
-      if (hitsBack(x, y)) {
+      if (hitsBackLabel(x, y)) {
         setState(menu);
         return;
       }
@@ -116,7 +107,7 @@ const hub = {
     background.render(ctx, alpha);
     ground.render(ctx, alpha);
 
-    drawText(ctx, '‹ Back', BACK_X, BACK_Y, { size: 16, align: 'left', color: COLORS.muted });
+    drawBackLabel(ctx, '‹ Back');
     drawText(ctx, 'Locations & Style', viewport.width / 2, viewport.height * 0.14, { size: 22 });
     drawText(ctx, `${game.coins} coins`, viewport.width / 2, viewport.height * 0.2, {
       size: 14,
