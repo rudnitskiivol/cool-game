@@ -75,6 +75,7 @@ function launchLevel(step) {
     goal: step.goal,
     location: step.location,
     difficultyOffset: step.difficultyOffset,
+    startLine: step.startLine,
     onComplete: () => setState(story, 'win'),
     onFail: () => setState(story, 'fail'),
   });

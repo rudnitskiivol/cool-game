@@ -133,6 +133,18 @@ export function hits(playerY) {
   return false;
 }
 
+// Distance between the player's hitbox and the nearer gap edge of any pipe
+// currently overlapping the player's column; Infinity when none overlaps.
+export function gapClearance(playerY) {
+  const r = PLAYER_RADIUS - PLAYER_HITBOX_FORGIVENESS;
+  let best = Infinity;
+  for (const o of obstacles) {
+    if (o.x > PLAYER_X + r || o.x + OBSTACLE_WIDTH < PLAYER_X - r) continue;
+    best = Math.min(best, playerY - r - o.gapY, o.gapY + o.gap - (playerY + r));
+  }
+  return best;
+}
+
 export function collectPassed(playerX) {
   let passed = 0;
   for (const o of obstacles) {

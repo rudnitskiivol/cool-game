@@ -42,6 +42,10 @@ function drawEyes(ctx, mood, time, p) {
       ctx.moveTo(x - 9 * side, -12);
       ctx.lineTo(x + 7 * side, -8);
       ctx.stroke();
+    } else if (mood === 'surprised') {
+      ctx.beginPath();
+      ctx.arc(x, -6, 8, Math.PI * 1.2, Math.PI * 1.8);
+      ctx.stroke();
     }
   }
 }
@@ -55,6 +59,8 @@ function drawMouth(ctx, mood, p) {
     ctx.arc(0, 26, 9, Math.PI * 0.15, Math.PI * 0.85);
   } else if (mood === 'sad') {
     ctx.arc(0, 40, 8, Math.PI * 1.2, Math.PI * 1.8);
+  } else if (mood === 'surprised') {
+    ctx.ellipse(0, 33, 5, 7, 0, 0, TAU);
   } else {
     ctx.moveTo(-6, 33);
     ctx.lineTo(6, 33);

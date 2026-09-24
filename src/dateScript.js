@@ -5,10 +5,10 @@
 // Steps:
 //   { type: 'line', who: 'nika' | 'you' | 'narrator', text, mood? }
 //   { type: 'choice', prompt, options: [{ text, delta, reply: <line> }] }
-//   { type: 'level', title, goal, location, difficultyOffset, winLine: <line> }
+//   { type: 'level', title, goal, location, difficultyOffset, startLine?, winLine: <line> }
 //   { type: 'ending' }
 //
-// `mood` ('happy' | 'neutral' | 'sad') only matters on Nika's lines; it sets
+// `mood` ('happy' | 'neutral' | 'sad' | 'surprised') only matters on Nika's lines; it sets
 // her expression until another of her lines changes it.
 
 export const CHARACTER = {
@@ -40,6 +40,7 @@ export const SCRIPT = [
     goal: 5,
     location: 'classic',
     difficultyOffset: 0,
+    startLine: 'The café\'s just past those pipes!',
     winLine: { type: 'line', who: 'nika', mood: 'happy', text: 'You made it! And only slightly crumpled.' },
   },
 
@@ -72,6 +73,7 @@ export const SCRIPT = [
     goal: 8,
     location: 'canyon',
     difficultyOffset: 4,
+    startLine: 'Keep up, slowpoke!',
     winLine: { type: 'line', who: 'nika', mood: 'happy', text: 'Not bad. You\'re sweating a little, though.' },
   },
 
@@ -103,6 +105,7 @@ export const SCRIPT = [
     goal: 12,
     location: 'neon',
     difficultyOffset: 9,
+    startLine: 'Rooftop\'s up there. Don\'t look down.',
     winLine: { type: 'line', who: 'nika', mood: 'happy', text: 'You actually made it. I\'m impressed.' },
   },
 
@@ -135,6 +138,15 @@ export const ENDINGS = [
 ];
 
 export const THE_END = { type: 'line', who: 'narrator', text: 'THE END. Thanks for playing the prototype!' };
+
+// Short reactions Nika shouts during a level (see companion.js). A level's
+// own `startLine` replaces the random pick for the start.
+export const FLIGHT_LINES = {
+  start: ['Let\'s go! Don\'t embarrass me.', 'I believe in you. Mostly.', 'Okay, flap like you mean it!'],
+  halfway: ['Halfway there!', 'You\'re doing great!', 'Look at you go!'],
+  almost: ['One more! Almost there!', 'Last one, don\'t blow it!'],
+  close: ['Whoa, that was close!', 'My heart just stopped.', 'Careful!!', 'How are you still alive?'],
+};
 
 export const FAIL_LINES = [
   { type: 'line', who: 'nika', mood: 'sad', text: 'Ouch. Are you okay?' },

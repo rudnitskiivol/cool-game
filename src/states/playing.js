@@ -3,6 +3,8 @@ import { consumeTap, getTapPos } from '../input.js';
 import { drawBackLabel, drawText, hitsBackLabel } from '../draw.js';
 import { earnCoins, game, recordScore, setState } from '../game.js';
 import { findSkin } from '../content.js';
+import { FLIGHT_LINES } from '../dateScript.js';
+import * as companion from '../companion.js';
 import { setLocation } from '../theme.js';
 import gameover from './gameover.js';
 import menu from './menu.js';
@@ -44,15 +46,37 @@ import {
 
 // How long a story level's title stays up before fading out.
 const LEVEL_TITLE_TIME = 2.2;
+// Nika's opening line waits for the level to get going.
+const START_LINE_DELAY = 0.6;
+// Passing a pipe with less hitbox clearance than this counts as a near miss.
+const NEAR_MISS = 12;
 
 // angle/squash are presentation-only; the simulation still knows nothing
 // about them. Each keeps a prev value so render() can interpolate.
 const player = { y: 0, prevY: 0, vy: 0, angle: 0, prevAngle: 0, squash: 0, prevSquash: 0 };
 
 // null for the endless mode. For a story level (see states/story.js):
-// { title, goal, location, difficultyOffset, onComplete, onFail }.
+// { title, goal, location, difficultyOffset, startLine?, onComplete, onFail }.
 let level = null;
 let levelT = 0;
+let saidStart = false;
+// Tightest clearance through the pipe currently being passed.
+let minClearance = Infinity;
+
+function pick(lines) {
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+// Nika reacts to the pipe just passed: milestones first, else a near miss.
+function reactToPipe() {
+  if (score === level.goal - 1) {
+    companion.say(pick(FLIGHT_LINES.almost), 'happy');
+  } else if (score === Math.ceil(level.goal / 2)) {
+    companion.say(pick(FLIGHT_LINES.halfway), 'happy');
+  } else if (minClearance < NEAR_MISS && !companion.isTalking()) {
+    companion.say(pick(FLIGHT_LINES.close), 'surprised');
+  }
+}
 
 // A single ring left behind at the flap point. It drifts left with the world
 // so it reads as "the air the bird pushed off", not a HUD decal.
@@ -99,6 +123,9 @@ const playing = {
   enter(storyLevel = null) {
     level = storyLevel;
     levelT = 0;
+    saidStart = false;
+    minClearance = Infinity;
+    companion.reset();
     setLocation(level ? level.location : game.location);
 
     player.y = viewport.height * 0.4;
@@ -129,6 +156,13 @@ const playing = {
     }
 
     levelT += dt;
+    if (level) {
+      companion.update(dt);
+      if (!saidStart && levelT >= START_LINE_DELAY) {
+        saidStart = true;
+        companion.say(level.startLine ?? pick(FLIGHT_LINES.start), 'happy');
+      }
+    }
 
     player.prevAngle = player.angle;
     player.prevSquash = player.squash;
@@ -183,9 +217,14 @@ const playing = {
     ground.update(dt, worldSpeed);
 
     obstacles.update(dt, difficulty);
+    if (level) minClearance = Math.min(minClearance, obstacles.gapClearance(player.y));
     const gained = obstacles.collectPassed(PLAYER_X);
     if (gained > 0) scorePop = 1;
     score += gained;
+    if (level && gained > 0) {
+      reactToPipe();
+      minClearance = Infinity;
+    }
     // Pitch nudges up with the run's score, so a streak of pipes feels like
     // it's building rather than repeating the same blip.
     if (gained > 0) audio.score(score);
@@ -261,6 +300,8 @@ const playing = {
       size: HUD_BEST_SIZE,
       color: COLORS.muted,
     });
+
+    if (level) companion.render(ctx);
 
     if (level && levelT < LEVEL_TITLE_TIME) {
       ctx.globalAlpha = Math.min(1, (LEVEL_TITLE_TIME - levelT) / 0.5);
