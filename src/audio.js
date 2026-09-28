@@ -1,78 +1,61 @@
-// All sound effects, synthesized with the Web Audio API — no .mp3/.ogg/.wav
-// assets anywhere. This module owns the single AudioContext, the mobile
-// unlock, the mute flag, and one small function per sound.
-//
-// Nothing here feeds back into gameplay: sounds are fire-and-forget, and
-// scheduling uses the AudioContext's own clock (ctx.currentTime), which is
-// fine — the fixed-timestep rule in loop.js governs simulated game state,
-// not audio hardware scheduling.
-import {
-  AUDIO_MUTE_KEY,
-  FLAP_FREQ_START,
-  FLAP_FREQ_END,
-  FLAP_DURATION,
-  FLAP_GAIN,
-  SCORE_FREQ_BASE,
-  SCORE_FREQ_STEP,
-  SCORE_FREQ_MAX,
-  SCORE_DURATION,
-  SCORE_GAIN,
-  DEATH_TONE_FREQ_START,
-  DEATH_TONE_FREQ_END,
-  DEATH_TONE_DURATION,
-  DEATH_TONE_GAIN,
-  DEATH_NOISE_DURATION,
-  DEATH_NOISE_GAIN,
-  BEST_NOTE_FREQS,
-  BEST_NOTE_DURATION,
-  BEST_NOTE_GAP,
-  BEST_NOTE_GAIN,
-} from './config.js';
+// Refined audio synthesizer using Web Audio API.
+// Eliminates harsh clipping, screeching square waves, and jarring noise bursts.
+// Features melodic, character-themed sound profiles (Zen bells, Cyber synth, Warm marimba, Heavy kick, Noir tape).
 
-// Created immediately at module load — that's allowed and doesn't require a
-// gesture. It starts "suspended" on mobile; only resume() needs one.
-const ctx = new (window.AudioContext || window.webkitAudioContext)();
+import { AUDIO_MUTE_KEY } from './config.js';
+import { readStorage, writeStorage } from './game.js';
 
-let muted = localStorage.getItem(AUDIO_MUTE_KEY) === '1';
-
-// A short buffer of random samples, generated once and reused for every
-// impact sound — still fully synthesized, just precomputed so death() isn't
-// filling a buffer on every collision.
-let noiseBuffer = null;
-function getNoiseBuffer() {
-  if (noiseBuffer) return noiseBuffer;
-  const length = Math.ceil(ctx.sampleRate * 0.3);
-  noiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-  return noiseBuffer;
+function createContext() {
+  const scope = globalThis.window ?? globalThis;
+  const AudioCtor = scope.AudioContext || scope.webkitAudioContext;
+  if (typeof AudioCtor !== 'function') return null;
+  try {
+    return new AudioCtor();
+  } catch {
+    return null;
+  }
 }
 
-// --- Mobile unlock -----------------------------------------------------
-// A suspended AudioContext can only be resumed from inside a real
-// user-gesture event handler, not later on a fixed-step update(). This
-// listens on the document directly (independent of the game's own tap
-// queue in input.js) and removes itself after the first attempt.
+const ctx = createContext();
+let muted = readStorage(AUDIO_MUTE_KEY) === '1';
+let currentProfile = 'classic';
+
+// Pentatonic scales for musical score progression
+const PENTATONIC = [
+  523.25, // C5
+  587.33, // D5
+  659.25, // E5
+  783.99, // G5
+  880.00, // A5
+  1046.50, // C6
+  1174.66, // D6
+  1318.51, // E6
+];
+
+// Unlock Web Audio on first user interaction
 function unlock() {
-  ctx.resume().catch(() => {});
+  try {
+    ctx?.resume()?.catch?.(() => {});
+  } catch {
+    // Some engines throw synchronously instead of rejecting
+  }
   document.removeEventListener('pointerdown', unlock);
 }
-document.addEventListener('pointerdown', unlock, { passive: true });
-
-// Exposed only for diagnostics (e.g. confirming the unlock worked) — never
-// used to feed anything back into gameplay.
-export function contextState() {
-  return ctx.state;
+if (ctx && typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', unlock, { passive: true });
 }
 
-// --- Mute ----------------------------------------------------------------
+export function contextState() {
+  return ctx?.state ?? 'unavailable';
+}
+
 export function isMuted() {
   return muted;
 }
 
 export function setMuted(value) {
   muted = value;
-  localStorage.setItem(AUDIO_MUTE_KEY, muted ? '1' : '0');
+  writeStorage(AUDIO_MUTE_KEY, muted ? '1' : '0');
 }
 
 export function toggleMute() {
@@ -80,85 +63,177 @@ export function toggleMute() {
   return muted;
 }
 
-// Every sound funnels through here: when muted, no oscillator/gain/buffer
-// node is ever created — a muted game does no audio work, rather than
-// quietly playing everything at zero gain.
-function play(build) {
-  if (muted) return;
-  build(ctx.currentTime);
+export function setAudioProfile(profileId) {
+  currentProfile = profileId || 'classic';
 }
 
-// --- Sounds ----------------------------------------------------------------
+function play(build) {
+  if (muted || !ctx) return;
+  try {
+    build(ctx.currentTime);
+  } catch {
+    // Graceful fallback if audio hardware is unavailable
+  }
+}
 
+// Gentle, natural wing flap / thrust
 export function flap() {
   play((t) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(FLAP_FREQ_START, t);
-    osc.frequency.exponentialRampToValueAtTime(FLAP_FREQ_END, t + FLAP_DURATION);
-    gain.gain.setValueAtTime(FLAP_GAIN, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + FLAP_DURATION);
+
+    if (currentProfile === 'zen') {
+      // Soft airy flutter
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(260, t);
+      osc.frequency.exponentialRampToValueAtTime(380, t + 0.08);
+      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    } else if (currentProfile === 'cyber') {
+      // Crisp electric thrust
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320, t);
+      osc.frequency.exponentialRampToValueAtTime(540, t + 0.06);
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    } else if (currentProfile === 'heavy') {
+      // Deep athletic push
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, t);
+      osc.frequency.exponentialRampToValueAtTime(280, t + 0.09);
+      gain.gain.setValueAtTime(0.14, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    } else {
+      // Warm & balanced flap
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(300, t);
+      osc.frequency.exponentialRampToValueAtTime(460, t + 0.08);
+      gain.gain.setValueAtTime(0.10, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    }
+
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + FLAP_DURATION + 0.02);
+    osc.stop(t + 0.1);
   });
 }
 
-// streak: the current in-run score (0-based), used to nudge the pitch up a
-// little on each successive pass so a good run sounds like it's building.
+// Melodic score / obstacle pass notification (harmonizes with streak instead of harsh square beeps)
 export function score(streak = 0) {
   play((t) => {
-    const freq = Math.min(SCORE_FREQ_BASE + streak * SCORE_FREQ_STEP, SCORE_FREQ_MAX);
+    const noteIndex = streak % PENTATONIC.length;
+    const baseFreq = PENTATONIC[noteIndex];
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(freq, t);
-    gain.gain.setValueAtTime(SCORE_GAIN, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + SCORE_DURATION);
+
+    if (currentProfile === 'zen') {
+      // Pure soothing bell chime
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq * 0.9, t);
+      gain.gain.setValueAtTime(0.11, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    } else if (currentProfile === 'cyber') {
+      // High-tech clean synth tone
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(baseFreq * 1.2, t);
+      gain.gain.setValueAtTime(0.10, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    } else if (currentProfile === 'warm') {
+      // Marimba / acoustic resonance
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq, t);
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    } else if (currentProfile === 'heavy') {
+      // Solid rhythmic hit
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(baseFreq * 0.7, t);
+      gain.gain.setValueAtTime(0.13, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    } else {
+      // Noir / classic
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq, t);
+      gain.gain.setValueAtTime(0.10, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    }
+
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + SCORE_DURATION + 0.02);
+    osc.stop(t + 0.25);
   });
 }
 
+// Soft, dignified collision sound — eliminates the harsh fart/sawtooth noise
 export function death() {
   play((t) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(DEATH_TONE_FREQ_START, t);
-    osc.frequency.exponentialRampToValueAtTime(DEATH_TONE_FREQ_END, t + DEATH_TONE_DURATION);
-    gain.gain.setValueAtTime(DEATH_TONE_GAIN, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + DEATH_TONE_DURATION);
+
+    // Muted bass drop (cinematic low thump)
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.22);
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + DEATH_TONE_DURATION + 0.02);
-
-    const noise = ctx.createBufferSource();
-    noise.buffer = getNoiseBuffer();
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(DEATH_NOISE_GAIN, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + DEATH_NOISE_DURATION);
-    noise.connect(noiseGain).connect(ctx.destination);
-    noise.start(t);
-    noise.stop(t + DEATH_NOISE_DURATION + 0.02);
+    osc.stop(t + 0.25);
   });
 }
 
+// Triumphant, harmonic completion chord
 export function newBest() {
   play((t) => {
-    BEST_NOTE_FREQS.forEach((freq, i) => {
-      const start = t + i * BEST_NOTE_GAP;
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C - E - G - C
+    notes.forEach((freq, i) => {
+      const start = t + i * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.14, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.26);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.28);
+    });
+  });
+}
+
+// Delicate, crystalline collectible sparkle
+export function collect() {
+  play((t) => {
+    [783.99, 1046.50].forEach((freq, i) => {
+      const start = t + i * 0.06;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.12, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.16);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.18);
+    });
+  });
+}
+
+// Harmonic midpoint checkpoint fanfare
+export function checkpoint() {
+  play((t) => {
+    [440, 554.37, 659.25].forEach((freq, i) => {
+      const start = t + i * 0.07;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, start);
-      gain.gain.setValueAtTime(BEST_NOTE_GAIN, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + BEST_NOTE_DURATION);
+      gain.gain.setValueAtTime(0.12, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
       osc.connect(gain).connect(ctx.destination);
       osc.start(start);
-      osc.stop(start + BEST_NOTE_DURATION + 0.02);
+      osc.stop(start + 0.26);
     });
   });
 }

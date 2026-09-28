@@ -1,9 +1,7 @@
-// Taps are edge-triggered and buffered, never handled inside the event callback:
-// the simulation consumes them on its own fixed step so input timing can't drift
-// with the browser's event timing.
 import { viewport } from './viewport.js';
 
 let tapQueued = false;
+let pointerDown = false;
 
 // Position of the most recently queued tap, converted into virtual units at
 // event time (using the viewport transform already computed by resize).
@@ -18,6 +16,7 @@ export function initInput(canvas) {
     (e) => {
       e.preventDefault();
       tapQueued = true;
+      pointerDown = true;
 
       const rect = canvas.getBoundingClientRect();
       const cssX = e.clientX - rect.left;
@@ -27,6 +26,20 @@ export function initInput(canvas) {
     },
     { passive: false },
   );
+
+  const release = () => {
+    pointerDown = false;
+  };
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', release);
+  }
+}
+
+export function isPointerDown() {
+  return pointerDown;
 }
 
 export function consumeTap() {
@@ -45,4 +58,5 @@ export function getTapPos() {
 
 export function clearTap() {
   tapQueued = false;
+  pointerDown = false;
 }

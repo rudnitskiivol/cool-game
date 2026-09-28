@@ -1,8 +1,31 @@
 import { findLocation, findSkin } from './content.js';
 
+// Storage can be missing (tests), blocked (privacy mode) or full (quota);
+// none of that should take the game down.
+export function readStorage(key) {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeStorage(key, value) {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // Ignore in environments without writable localStorage
+  }
+}
+
+function loadCount(key) {
+  const value = Math.floor(Number(readStorage(key)));
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 function loadIds(key, fallback) {
   try {
-    const raw = JSON.parse(localStorage.getItem(key));
+    const raw = JSON.parse(readStorage(key));
     return Array.isArray(raw) && raw.length > 0 ? raw : fallback;
   } catch {
     return fallback;
@@ -12,13 +35,20 @@ function loadIds(key, fallback) {
 export const game = {
   state: null,
   score: 0,
-  best: Number(localStorage.getItem('best') || 0),
-  coins: Number(localStorage.getItem('coins') || 0),
+  best: loadCount('best'),
+  coins: loadCount('coins'),
+  cozyMode: readStorage('cozyMode') === 'true',
   unlockedLocations: loadIds('unlockedLocations', ['classic']),
   unlockedSkins: loadIds('unlockedSkins', ['classic']),
-  location: localStorage.getItem('location') || 'classic',
-  skin: localStorage.getItem('skin') || 'classic',
+  location: findLocation(readStorage('location')).id,
+  skin: findSkin(readStorage('skin')).id,
 };
+
+export function toggleCozyMode() {
+  game.cozyMode = !game.cozyMode;
+  writeStorage('cozyMode', String(game.cozyMode));
+  return game.cozyMode;
+}
 
 export function setState(next, ...args) {
   game.state?.exit?.();
@@ -30,22 +60,22 @@ export function recordScore(score) {
   game.score = score;
   if (score > game.best) {
     game.best = score;
-    localStorage.setItem('best', String(score));
+    writeStorage('best', String(score));
   }
 }
 
 export function earnCoins(amount) {
   if (amount <= 0) return;
   game.coins += amount;
-  localStorage.setItem('coins', String(game.coins));
+  writeStorage('coins', String(game.coins));
 }
 
 function unlock(key, id, cost) {
   if (game.coins < cost) return false;
   game.coins -= cost;
-  localStorage.setItem('coins', String(game.coins));
+  writeStorage('coins', String(game.coins));
   game[key] = [...game[key], id];
-  localStorage.setItem(key, JSON.stringify(game[key]));
+  writeStorage(key, JSON.stringify(game[key]));
   return true;
 }
 
@@ -60,11 +90,11 @@ export function unlockSkin(id) {
 export function selectLocation(id) {
   if (!game.unlockedLocations.includes(id)) return;
   game.location = id;
-  localStorage.setItem('location', id);
+  writeStorage('location', id);
 }
 
 export function selectSkin(id) {
   if (!game.unlockedSkins.includes(id)) return;
   game.skin = id;
-  localStorage.setItem('skin', id);
+  writeStorage('skin', id);
 }

@@ -52,6 +52,53 @@ export function wrapText(ctx, text, maxWidth, size, weight = '600') {
   return lines;
 }
 
+export function drawRoundedRect(ctx, x, y, w, h, r = 8) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, radius);
+  } else {
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.arcTo(x + w, y, x + w, y + radius, radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
+    ctx.lineTo(x + radius, y + h);
+    ctx.arcTo(x, y + h, x, y + h - radius, radius);
+    ctx.lineTo(x, y + radius);
+    ctx.arcTo(x, y, x + radius, y, radius);
+    ctx.closePath();
+  }
+}
+
+export function drawGlassCard(ctx, x, y, w, h, options = {}) {
+  const {
+    radius = 12,
+    fill = 'rgba(255, 255, 255, 0.08)',
+    border = 'rgba(255, 255, 255, 0.16)',
+    lineWidth = 1,
+    glowColor = null,
+    glowBlur = 0,
+  } = options;
+
+  ctx.save();
+  if (glowColor && glowBlur > 0) {
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = glowBlur;
+  }
+  drawRoundedRect(ctx, x, y, w, h, radius);
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (border && lineWidth > 0) {
+    ctx.strokeStyle = border;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // A small speaker glyph drawn with plain paths (no font-dependent icon), so
 // it renders identically everywhere. A diagonal slash stands in for a mute
 // state; sound waves for an active one.
@@ -95,7 +142,7 @@ export function drawMuteButton(ctx, x, y, muted) {
 }
 
 // A plain top-left text link back to the menu, used by every screen that
-// isn't the menu itself (hub, playing, game over). The hit box is padded
+// isn't the menu itself (hub, dates, story, game over). The hit box is padded
 // generously rather than measured against the rendered text, since canvas
 // text width varies by font/device and this only needs to cover the label.
 export const BACK_LABEL_X = 16;

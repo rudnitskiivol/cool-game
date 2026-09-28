@@ -31,6 +31,15 @@ export const OBSTACLE_SPACING_MIN = 220;
 // exponential approach — see difficulty.js). Lower = ramps up faster.
 export const DIFFICULTY_RAMP_PIPES = 15;
 
+// Glide mechanics (holding thumb on touchscreen)
+export const GLIDE_GRAVITY = 320;
+export const GLIDE_MAX_FALL_SPEED = 140;
+export const GLIDE_TILT_TARGET = 0.06;
+
+// Cozy mode enhancements (kinder hitboxes and wider gaps)
+export const COZY_GAP_BONUS = 30;
+export const COZY_HITBOX_FORGIVENESS = 8;
+
 // Shrinks the player's effective collision radius so deaths feel fair
 // rather than pixel-exact against the pipes.
 export const PLAYER_HITBOX_FORGIVENESS = 4;
