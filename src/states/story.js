@@ -1,298 +1,216 @@
-// Visual-novel screen for "Date Night": walks dateScript.js, shows dialogue
-// and choices, and hands off to playing.js for each flying level.
-//
-// Enter with:
-//   'new'  — start the story from the top
-//   'win'  — a level was just completed; continue past it
-//   'fail' — the player crashed; lose affection, then retry the same level
 import { viewport } from '../viewport.js';
 import { clearTap, consumeTap, getTapPos } from '../input.js';
-import { drawBackLabel, drawText, hitsBackLabel, wrapText } from '../draw.js';
-import { setState } from '../game.js';
-import { setLocation } from '../theme.js';
-import * as background from '../background.js';
-import * as ground from '../ground.js';
-import { COLORS, OBSTACLE_SPEED_START } from '../config.js';
-import {
-  AFFECTION_START,
-  CHARACTER,
-  FAIL_LINES,
-  FAIL_PENALTY,
-  SCRIPT,
-  THE_END,
-  endingFor,
-} from '../dateScript.js';
-import { drawGirl } from '../portrait.js';
+import { drawBackLabel, drawRoundedRect, drawText, hitsBackLabel, wrapText } from '../draw.js';
+import { game, setState } from '../game.js';
+import { findCharacter } from '../romance.js';
+import { createArtPlayer, drawArt, preloadArt, reducedMotion } from '../romanceArt.js';
+import { AFFECTION_START, FAIL_LINES, FAIL_PENALTY, scriptFor, endingFor } from '../dateScript.js';
 import playing from './playing.js';
-import menu from './menu.js';
+import dates from './dates.js';
 
 const CHARS_PER_SEC = 45;
-const POP_DURATION = 1.2;
-
-const PORTRAIT_Y = 232;
-const METER_Y = 64;
-const METER_W = 120;
-const BOX_Y = 404;
-const BOX_H = 156;
-const TEXT_SIZE = 16;
-const LINE_HEIGHT = 22;
-const CHOICE_TOP = 404;
-const CHOICE_H = 46;
+const BOX_Y = 410;
+const CHOICE_H = 54;
 const CHOICE_GAP = 10;
 
+let character = findCharacter();
+let script = [];
 let index = 0;
 let affection = AFFECTION_START;
-// Lines that play before the script continues: choice replies, win/fail
-// reactions, the ending. Always drained before `index` moves on.
 let pending = [];
 let finished = false;
-let mood = 'neutral';
+let betrayed = false;
+let scene = '01-meeting';
+let chapter = '';
 let typeT = 0;
-let time = 0;
 let pop = null;
+let reactionT = 1;
+const illustration = createArtPlayer();
 
-function current() {
-  return pending.length ? pending[0] : SCRIPT[index];
-}
-
-// The backdrop is the location of the next level, so each scene is set where
-// the date is about to go (and the ending stays at the last one).
-function sceneLocation() {
-  const upcoming = SCRIPT.slice(index).find((s) => s.type === 'level');
-  if (upcoming) return upcoming.location;
-  return [...SCRIPT].reverse().find((s) => s.type === 'level').location;
-}
+const current = () => pending.length ? pending[0] : script[index];
 
 function changeAffection(delta) {
-  if (!delta) return;
   affection = Math.max(0, Math.min(100, affection + delta));
   pop = { value: delta, t: 0 };
 }
 
-function launchLevel(step) {
-  setState(playing, {
-    title: step.title,
-    goal: step.goal,
-    location: step.location,
-    difficultyOffset: step.difficultyOffset,
-    startLine: step.startLine,
-    onComplete: () => setState(story, 'win'),
-    onFail: () => setState(story, 'fail'),
-  });
-}
-
-// Settle on whatever should be on screen now, launching a level or leaving
-// the story when the script says so.
 function resolve() {
   typeT = 0;
-  setLocation(sceneLocation());
-
   if (!pending.length) {
-    const step = SCRIPT[index];
+    const step = script[index];
     if (step.type === 'level') {
-      launchLevel(step);
+      setState(playing, {
+        ...step, character,
+        onComplete: () => {
+          delete step.startScore;
+          delete step.checkpointReached;
+          setState(story, 'win');
+        },
+        onFail: (retryInfo) => {
+          if (retryInfo?.checkpointReached) {
+            step.startScore = retryInfo.startScore;
+            step.checkpointReached = true;
+          }
+          setState(story, 'fail');
+        },
+      });
       return;
     }
     if (step.type === 'ending') {
-      if (finished) {
-        setState(menu);
-        return;
-      }
+      if (finished) { setState(dates); return; }
       finished = true;
-      pending = [...endingFor(affection), THE_END];
+      pending = endingFor(character, affection, betrayed);
+      chapter = betrayed || affection < 45 ? 'Утраченное доверие' : affection >= 75 ? 'Вместе' : 'Открытый финал';
     }
   }
-
   const shown = current();
-  if (shown.type === 'line' && shown.who === 'nika' && shown.mood) mood = shown.mood;
-}
-
-function advance() {
-  if (pending.length) pending.shift();
-  else index += 1;
-  resolve();
-}
-
-function choiceRect(i) {
-  return {
-    x: 20,
-    y: CHOICE_TOP + i * (CHOICE_H + CHOICE_GAP),
-    w: viewport.width - 40,
-    h: CHOICE_H,
-  };
-}
-
-function choiceAt(x, y, step) {
-  return step.options.findIndex((_, i) => {
-    const r = choiceRect(i);
-    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-  });
-}
-
-function speakerName(who) {
-  if (who === 'nika') return CHARACTER.name;
-  if (who === 'you') return 'You';
-  return '';
-}
-
-function drawMeter(ctx) {
-  const x = viewport.width / 2 - METER_W / 2 + 12;
-  drawText(ctx, '♥', x - 16, METER_Y, { size: 18, color: CHARACTER.palette.accent });
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-  ctx.beginPath();
-  ctx.roundRect(x, METER_Y - 4, METER_W, 8, 4);
-  ctx.fill();
-
-  ctx.fillStyle = CHARACTER.palette.accent;
-  ctx.beginPath();
-  ctx.roundRect(x, METER_Y - 4, Math.max(8, (METER_W * affection) / 100), 8, 4);
-  ctx.fill();
-
-  if (pop) {
-    const k = pop.t / POP_DURATION;
-    ctx.globalAlpha = 1 - k;
-    drawText(ctx, `${pop.value > 0 ? '+' : ''}${pop.value}`, x + METER_W + 22, METER_Y - k * 18, {
-      size: 16,
-      color: pop.value > 0 ? '#7ee2a0' : '#ff7a7a',
-    });
-    ctx.globalAlpha = 1;
-  }
+  reactionT = 0;
+  scene = shown.scene ?? scene;
+  chapter = shown.chapter ?? chapter;
+  preloadArt(character, [scene]);
+  illustration.show(character, scene);
 }
 
 function drawBox(ctx, x, y, w, h) {
-  ctx.fillStyle = 'rgba(12, 14, 26, 0.92)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  ctx.fillStyle = 'rgba(12,14,26,0.95)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 12);
-  ctx.fill();
-  ctx.stroke();
+  drawRoundedRect(ctx, x, y, w, h, 14); ctx.fill(); ctx.stroke();
+}
+
+function drawMeter(ctx) {
+  const x = viewport.width / 2 - 46;
+  drawText(ctx, '♥', x - 18, 62, { size: 18, color: character.accent });
+  ctx.fillStyle = '#353546';
+  drawRoundedRect(ctx, x, 58, 108, 8, 4); ctx.fill();
+  if (affection > 0) {
+    ctx.fillStyle = character.accent;
+    drawRoundedRect(ctx, x, 58, 108 * affection / 100, 8, 4); ctx.fill();
+  }
+  drawText(ctx, `${affection}`, x + 127, 62, { size: 12, color: character.accent });
+  if (pop) {
+    ctx.save();
+    ctx.globalAlpha = 1 - pop.t / 1.2;
+    drawText(ctx, `${pop.value > 0 ? '+' : ''}${pop.value}`, x + 155, 62 - pop.t * 15,
+      { size: 14, color: pop.value > 0 ? '#7ee2a0' : '#ff7a7a' });
+    ctx.restore();
+  }
 }
 
 function drawDialogue(ctx, step) {
-  const x = 12;
   const w = viewport.width - 24;
-  drawBox(ctx, x, BOX_Y, w, BOX_H);
-
-  const name = speakerName(step.who);
-  if (name) {
-    drawText(ctx, name, x + 16, BOX_Y + 22, {
-      size: 14,
-      align: 'left',
-      color: step.who === 'nika' ? CHARACTER.palette.accent : COLORS.muted,
-    });
-  }
-
-  const color = step.who === 'narrator' ? COLORS.muted : COLORS.text;
-  const lines = wrapText(ctx, step.text, w - 32, TEXT_SIZE, '500');
+  drawBox(ctx, 12, BOX_Y, w, 198);
+  const speaker = step.who === 'character' ? character.name : step.who === 'you' ? 'Ты' : chapter;
+  drawText(ctx, speaker, 28, BOX_Y + 25, { size: 14, align: 'left', color: character.accent });
+  const lines = wrapText(ctx, step.text, w - 32, 16, '400');
   let budget = Math.floor(typeT * CHARS_PER_SEC);
-  let y = BOX_Y + (name ? 52 : 34);
-  for (const line of lines) {
-    if (budget <= 0) break;
-    drawText(ctx, line.slice(0, budget), x + 16, y, { size: TEXT_SIZE, align: 'left', weight: '500', color });
-    budget -= line.length + 1;
-    y += LINE_HEIGHT;
-  }
-
-  if (typeT * CHARS_PER_SEC >= step.text.length && time % 1 < 0.6) {
-    drawText(ctx, '▸', x + w - 20, BOX_Y + BOX_H - 18, { size: 16, color: COLORS.muted });
+  lines.forEach((text, i) => {
+    if (budget > 0) drawText(ctx, text.slice(0, budget), 28, BOX_Y + 57 + i * 22,
+      { size: 16, align: 'left', weight: '400' });
+    budget -= text.length + 1;
+  });
+  if (typeT * CHARS_PER_SEC >= step.text.length) {
+    drawText(ctx, finished && pending.length === 1 ? 'К историям  →' : 'Продолжить  →',
+      viewport.width - 28, 590, { size: 12, align: 'right', color: '#aeb5cd' });
   }
 }
 
 function drawChoices(ctx, step) {
-  // On a pill so it stays readable over the portrait behind it.
-  const pillW = 150;
-  ctx.fillStyle = 'rgba(12, 14, 26, 0.85)';
-  ctx.beginPath();
-  ctx.roundRect(viewport.width / 2 - pillW / 2, CHOICE_TOP - 32, pillW, 24, 12);
-  ctx.fill();
-  drawText(ctx, step.prompt, viewport.width / 2, CHOICE_TOP - 20, { size: 13, color: COLORS.text });
-
+  drawText(ctx, step.prompt, viewport.width / 2, 389, { size: 16 });
   step.options.forEach((option, i) => {
-    const r = choiceRect(i);
-    drawBox(ctx, r.x, r.y, r.w, r.h);
-    const lines = wrapText(ctx, option.text, r.w - 24, 14, '600');
-    const top = r.y + r.h / 2 - ((lines.length - 1) * 17) / 2;
-    lines.forEach((line, j) => {
-      drawText(ctx, line, viewport.width / 2, top + j * 17, { size: 14 });
-    });
+    const y = BOX_Y + i * (CHOICE_H + CHOICE_GAP);
+    drawBox(ctx, 16, y, viewport.width - 32, CHOICE_H);
+    const lines = wrapText(ctx, option.text, viewport.width - 60, 14);
+    lines.forEach((text, j) => drawText(ctx, text, viewport.width / 2,
+      y + CHOICE_H / 2 + (j - (lines.length - 1) / 2) * 18, { size: 14 }));
   });
 }
 
 const story = {
   enter(arg) {
-    if (arg === 'new') {
+    if (arg && typeof arg === 'object') {
+      character = findCharacter(arg.characterId);
+      script = scriptFor(character);
       index = 0;
       affection = AFFECTION_START;
       pending = [];
       finished = false;
-      mood = 'neutral';
+      betrayed = false;
       pop = null;
+      scene = '01-meeting';
+      chapter = '';
+      illustration.reset();
+      preloadArt(character, ['portrait', ...character.chapters.map((c) => c[0]), '05-love', '06-fail']);
     } else if (arg === 'win') {
-      const level = SCRIPT[index];
-      index += 1;
-      if (level.winLine) pending.push(level.winLine);
+      index++;
     } else if (arg === 'fail') {
-      changeAffection(-FAIL_PENALTY);
-      pending.push(FAIL_LINES[Math.floor(Math.random() * FAIL_LINES.length)]);
+      const penalty = game.cozyMode ? 0 : FAIL_PENALTY;
+      if (penalty) changeAffection(-penalty);
+      if (script[index]?.checkpointReached) {
+        pending.push({ who: 'character', text: 'Ты в порядке? Половина пути позади, давай продолжим!' });
+      } else {
+        pending.push(FAIL_LINES[Math.floor(Math.random() * FAIL_LINES.length)]);
+      }
     }
-    // A tap buffered during the level's final frames must not skip the
-    // reaction line before it's even been read.
     clearTap();
     resolve();
   },
-
   update(dt) {
-    time += dt;
     typeT += dt;
-    if (pop) {
-      pop.t += dt;
-      if (pop.t >= POP_DURATION) pop = null;
-    }
-    background.update(dt, OBSTACLE_SPEED_START * 0.25);
-    ground.update(dt, OBSTACLE_SPEED_START * 0.25);
-
+    reactionT += dt;
+    illustration.update(dt);
+    if (pop) { pop.t += dt; if (pop.t >= 1.2) pop = null; }
     if (!consumeTap()) return;
     const { x, y } = getTapPos();
-
-    if (hitsBackLabel(x, y)) {
-      setState(menu);
-      return;
-    }
-
+    if (hitsBackLabel(x, y)) { setState(dates); return; }
     const step = current();
     if (step.type === 'choice') {
-      const i = choiceAt(x, y, step);
-      if (i < 0) return;
+      const i = Math.floor((y - BOX_Y) / (CHOICE_H + CHOICE_GAP));
+      if (x < 16 || x > viewport.width - 16 || i < 0 || i >= step.options.length ||
+        y > BOX_Y + i * (CHOICE_H + CHOICE_GAP) + CHOICE_H) return;
       const option = step.options[i];
       changeAffection(option.delta);
+      betrayed ||= option.endsRoute;
       pending.push(option.reply);
-      index += 1;
+      index = option.endsRoute ? script.length - 1 : index + 1;
       resolve();
       return;
     }
-
-    // First tap finishes the typewriter, the next one advances.
-    if (typeT * CHARS_PER_SEC < step.text.length) {
-      typeT = step.text.length / CHARS_PER_SEC;
-      return;
-    }
-    advance();
+    if (typeT * CHARS_PER_SEC < step.text.length) { typeT = step.text.length / CHARS_PER_SEC; return; }
+    if (pending.length) pending.shift();
+    else index++;
+    resolve();
   },
-
-  render(ctx, alpha) {
-    background.render(ctx, alpha);
-    ground.render(ctx, alpha);
-
-    ctx.fillStyle = 'rgba(8, 8, 16, 0.35)';
-    ctx.fillRect(0, 0, viewport.width, viewport.height);
-
-    drawGirl(ctx, viewport.width / 2, PORTRAIT_Y, mood, time, CHARACTER.palette);
-    drawMeter(ctx);
-    drawBackLabel(ctx, '‹ menu');
-
+  render(ctx) {
+    const w = viewport.width;
+    ctx.fillStyle = '#101321';
+    ctx.fillRect(0, 0, w, viewport.height);
     const step = current();
+    // A short, soft accent acknowledges a new spoken line without simulating
+    // mouth movement on a flat illustration.
+    const speaking = step.who === 'character' && reactionT < 0.8 && !reducedMotion();
+    const status = illustration.draw(ctx, 0, 82, w, 420, 0.12);
+    if (status !== 'ready') {
+      drawArt(ctx, character, 'portrait', 0, 82, w, 420, 0.12);
+      drawText(ctx, status === 'error' ? 'Иллюстрация недоступна' : 'Загрузка сцены…', w / 2, 335, { size: 14 });
+    }
+    const shade = ctx.createLinearGradient(0, 320, 0, 508);
+    shade.addColorStop(0, 'rgba(16,19,33,0)');
+    shade.addColorStop(1, '#101321');
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 320, w, 188);
+    drawBackLabel(ctx, '‹ истории');
+    drawText(ctx, character.name, w / 2, 28, { size: 18, color: character.accent });
+    if (speaking) {
+      ctx.save();
+      ctx.globalAlpha = Math.sin(reactionT / 0.8 * Math.PI) * 0.7;
+      ctx.strokeStyle = character.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(w / 2 - 26, 43); ctx.lineTo(w / 2 + 26, 43); ctx.stroke();
+      ctx.restore();
+    }
+    drawMeter(ctx);
     if (step.type === 'choice') drawChoices(ctx, step);
     else drawDialogue(ctx, step);
   },
