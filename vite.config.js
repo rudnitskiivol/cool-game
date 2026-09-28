@@ -29,9 +29,9 @@ export default defineConfig({
       devOptions: { enabled: false },
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png'],
       manifest: {
-        name: 'Cool Game',
-        short_name: 'Cool Game',
-        description: 'A one-tap Flappy-Bird-style arcade flyer with synthesized audio.',
+        name: 'Навстречу Ей',
+        short_name: 'Навстречу Ей',
+        description: 'Романтический аркадный полёт и визуальная новелла с 5 героинями.',
         // Relative to the manifest URL, so this keeps working regardless of
         // the subpath the build is deployed under (matches vite.config's
         // relative `base`).
@@ -58,7 +58,10 @@ export default defineConfig({
         // resolved against the actual `dist` output at build time -- the
         // precache manifest (and its revision hashes) is generated fresh on
         // every `vite build` rather than hand-maintained, so it can't rot.
-        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,png,webp,svg,webmanifest}'],
+        // Keep the source PNGs out of the offline download (~82 MB).
+        // The optimized WebP pack is revisioned and available offline.
+        globIgnores: ['romance-pack/**/*.png', 'romance-pack/**/*.md'],
         cleanupOutdatedCaches: true,
         // Force every new deploy to take over right away: skipWaiting makes
         // the new SW activate the instant it's done installing (instead of
