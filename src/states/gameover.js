@@ -19,7 +19,6 @@ const gameover = {
   enter() {
     since = 0;
     prevSince = 0;
-    // The tap that killed the player must not also restart the run.
     clearTap();
   },
 
@@ -34,14 +33,11 @@ const gameover = {
   },
 
   render(ctx, alpha) {
-    // The world is frozen where the player died; keep it on screen and dim it.
     playing.renderWorld(ctx, alpha);
 
     const t = prevSince + (since - prevSince) * alpha;
     const k = Math.min(t / GAMEOVER_FADE, 1);
 
-    // Overdrawn past the edges: the shake is still decaying when this fades
-    // in, and an unscrimmed sliver along an edge would give it away.
     ctx.globalAlpha = GAMEOVER_SCRIM * k;
     ctx.fillStyle = COLORS.sky;
     ctx.fillRect(
@@ -52,18 +48,23 @@ const gameover = {
     );
     ctx.globalAlpha = k;
 
-    drawText(ctx, String(game.score), viewport.width / 2, viewport.height * 0.36, { size: 56 });
-    drawText(ctx, `best ${game.best}`, viewport.width / 2, viewport.height * 0.45, {
+    drawText(ctx, String(game.score), viewport.width / 2, viewport.height * 0.36, {
+      size: 56,
+      weight: '800',
+    });
+    drawText(ctx, `Рекорд: ${game.best}`, viewport.width / 2, viewport.height * 0.45, {
       size: 16,
       color: COLORS.muted,
+      weight: '600',
     });
 
     if (since >= RESTART_LOCKOUT) {
-      drawText(ctx, 'tap to retry', viewport.width / 2, viewport.height * 0.58, {
+      drawText(ctx, 'Тапните, чтобы повторить', viewport.width / 2, viewport.height * 0.58, {
         size: 16,
-        color: COLORS.muted,
+        color: '#ffb6ca',
+        weight: '600',
       });
-      drawBackLabel(ctx, '‹ menu');
+      drawBackLabel(ctx, '‹ меню');
     }
 
     ctx.globalAlpha = 1;

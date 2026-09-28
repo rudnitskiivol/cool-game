@@ -1,5 +1,8 @@
 import { viewport } from './viewport.js';
+import { game } from './game.js';
 import {
+  COZY_GAP_BONUS,
+  COZY_HITBOX_FORGIVENESS,
   GROUND_HEIGHT,
   OBSTACLE_MARGIN,
   OBSTACLE_WIDTH,
@@ -14,99 +17,246 @@ import {
 import { gapForScore, spacingForScore, speedForScore } from './difficulty.js';
 import { current as theme } from './theme.js';
 
-// Pipe pairs: { x, prevX, gapY, gap, scored }. gapY is the y of the top edge
-// of the gap; the gap's bottom edge is gapY + gap. `gap` is captured once at
-// spawn time from the current difficulty ramp — it must NOT be re-read from
-// a global later, or every on-screen pipe would resize around the player as
-// the ramp keeps moving. Kept as a plain array — a handful of live obstacles
-// doesn't need pooling.
 let obstacles = [];
+let spawnCount = 0;
+let spawnListeners = [];
+let currentProfile = null;
+let currentStyle = 'classic';
+
+export function onSpawn(fn) {
+  spawnListeners.push(fn);
+}
 
 function floorY() {
   return viewport.height - GROUND_HEIGHT;
 }
 
+export function setStyle(styleId) {
+  currentStyle = styleId ?? 'classic';
+}
+
+export function setProfile(profile) {
+  currentProfile = profile;
+  currentStyle = profile?.id ?? 'classic';
+}
+
 function randomGapY(gap) {
-  const min = OBSTACLE_MARGIN;
-  const max = floorY() - OBSTACLE_MARGIN - gap;
+  const min = OBSTACLE_MARGIN + 10;
+  const max = floorY() - OBSTACLE_MARGIN - gap - 10;
   return min + Math.random() * (max - min);
 }
 
+function fixed(key) {
+  return currentProfile && !currentProfile.ramp ? currentProfile[key] : 0;
+}
+
+export function getGap(score) {
+  return (fixed('gap') || gapForScore(score)) + (game.cozyMode ? COZY_GAP_BONUS : 0);
+}
+
+export function getSpacing(score) {
+  return fixed('spacing') || spacingForScore(score);
+}
+
+export function getSpeed(score) {
+  return fixed('speed') || speedForScore(score);
+}
+
 function spawn(x, gap) {
-  obstacles.push({ x, prevX: x, gapY: randomGapY(gap), gap, scored: false });
+  const o = {
+    x,
+    prevX: x,
+    gapY: randomGapY(gap),
+    gap,
+    scored: false,
+  };
+  obstacles.push(o);
+  spawnCount++;
+
+  for (const fn of spawnListeners) fn(o, spawnCount);
 }
 
 export function reset() {
   obstacles = [];
-  spawn(viewport.width + OBSTACLE_WIDTH, gapForScore(0));
+  spawnCount = 0;
+  const initialGap = getGap(0);
+  spawn(viewport.width + OBSTACLE_WIDTH, initialGap);
 }
 
-export function update(dt, score) {
-  const speed = speedForScore(score);
-  const spacing = spacingForScore(score);
+export function update(dt, score, isLanding = false) {
+  const speed = getSpeed(score);
+  const spacing = getSpacing(score);
 
   for (const o of obstacles) {
     o.prevX = o.x;
     o.x -= speed * dt;
   }
 
-  // Despawn once fully off the left edge.
+  // Despawn once off screen
   obstacles = obstacles.filter((o) => o.x + OBSTACLE_WIDTH > 0);
 
-  // Spawn by horizontal spacing rather than a timer, so this stays correct
-  // as speed changes. Clamp to viewport.width so the new pipe always starts
-  // fully off the right edge — without this, a frame that overshoots the
-  // spacing threshold could spawn a pipe a couple of units on-screen,
-  // popping a visible sliver into existence.
+  // Spawn next obstacle cleanly
   const last = obstacles[obstacles.length - 1];
-  if (!last || last.x <= viewport.width - spacing) {
+  if (!isLanding && (!last || last.x <= viewport.width - spacing)) {
     const x = Math.max(viewport.width, (last ? last.x : viewport.width) + spacing);
-    spawn(x, gapForScore(score));
+    spawn(x, getGap(score));
   }
 }
 
-// Purely visual: collapse the interpolation source onto the current position
-// so a frozen (hitstop / game over) frame holds still instead of shivering as
-// `alpha` keeps sweeping between two different x values.
 export function freeze() {
   for (const o of obstacles) o.prevX = o.x;
 }
 
-// Render only — nothing below changes an obstacle's position or extent.
-// Drawn in three passes (shafts, highlights, caps) so fillStyle is set three
-// times per frame instead of three times per pipe.
-//
-// The cap is flush with the shaft (PIPE_CAP_OVERHANG is 0): hits() collides
-// against the plain OBSTACLE_WIDTH rectangle, so a cap wider than the shaft
-// would be visible pipe that the player passes straight through.
 export function render(ctx, alpha) {
-  const capX = -PIPE_CAP_OVERHANG;
-  const capW = OBSTACLE_WIDTH + PIPE_CAP_OVERHANG * 2;
-
-  ctx.fillStyle = theme.pipe;
   for (const o of obstacles) {
     const x = o.prevX + (o.x - o.prevX) * alpha;
+    const topH = o.gapY;
+    const botY = o.gapY + o.gap;
+    const botH = floorY() - botY;
 
-    ctx.fillRect(x, 0, OBSTACLE_WIDTH, o.gapY);
-    ctx.fillRect(x, o.gapY + o.gap, OBSTACLE_WIDTH, viewport.height - (o.gapY + o.gap));
-  }
+    if (currentStyle === 'aiko') {
+      // --- AIKO: Kyoto Temple Bookshelves & Torii Beams ---
+      // Pillars: Deep lacquered hinoki wood
+      ctx.fillStyle = '#4a2c18';
+      ctx.fillRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.fillRect(x, botY, OBSTACLE_WIDTH, botH);
 
-  ctx.fillStyle = theme.pipeHighlight;
-  for (const o of obstacles) {
-    const x = o.prevX + (o.x - o.prevX) * alpha + PIPE_HIGHLIGHT_X;
+      // Wood grain / inner shelf panels
+      ctx.fillStyle = '#683f24';
+      ctx.fillRect(x + 6, 0, OBSTACLE_WIDTH - 12, topH - 8);
+      ctx.fillRect(x + 6, botY + 8, OBSTACLE_WIDTH - 12, botH - 8);
 
-    ctx.fillRect(x, 0, PIPE_HIGHLIGHT_WIDTH, o.gapY);
-    ctx.fillRect(x, o.gapY + o.gap, PIPE_HIGHLIGHT_WIDTH, viewport.height - (o.gapY + o.gap));
-  }
+      // Gold-trimmed wooden lintels at gap edges
+      ctx.fillStyle = '#d4a359';
+      ctx.fillRect(x - 2, topH - 8, OBSTACLE_WIDTH + 4, 8);
+      ctx.fillRect(x - 2, botY, OBSTACLE_WIDTH + 4, 8);
 
-  ctx.fillStyle = theme.pipeCap;
-  for (const o of obstacles) {
-    const x = o.prevX + (o.x - o.prevX) * alpha + capX;
+      // Hanging paper lantern on top beam
+      const lanternY = topH - 22;
+      ctx.fillStyle = '#b33939';
+      ctx.beginPath();
+      ctx.arc(x + OBSTACLE_WIDTH / 2, lanternY, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffecd2';
+      ctx.beginPath();
+      ctx.arc(x + OBSTACLE_WIDTH / 2, lanternY, 4, 0, Math.PI * 2);
+      ctx.fill();
 
-    // OBSTACLE_MARGIN keeps both shafts far taller than the cap, so neither
-    // band can spill past the end of the pipe it belongs to.
-    ctx.fillRect(x, o.gapY - PIPE_CAP_HEIGHT, capW, PIPE_CAP_HEIGHT);
-    ctx.fillRect(x, o.gapY + o.gap, capW, PIPE_CAP_HEIGHT);
+    } else if (currentStyle === 'nika-cyberpunk') {
+      // --- NIKA: Cyberpunk Firewall & Neon Pylons ---
+      // Pylon base: Carbon alloy
+      ctx.fillStyle = '#0f1322';
+      ctx.fillRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.fillRect(x, botY, OBSTACLE_WIDTH, botH);
+
+      // Neon cyan border lines
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.strokeRect(x, botY, OBSTACLE_WIDTH, botH);
+
+      // Glowing magenta gap gate indicators
+      ctx.fillStyle = '#ff007f';
+      ctx.fillRect(x - 2, topH - 6, OBSTACLE_WIDTH + 4, 6);
+      ctx.fillRect(x - 2, botY, OBSTACLE_WIDTH + 4, 6);
+
+      // Data pulses down the core
+      ctx.fillStyle = 'rgba(0, 240, 255, 0.4)';
+      for (let sy = 16; sy < topH - 12; sy += 24) {
+        ctx.fillRect(x + 12, sy, OBSTACLE_WIDTH - 24, 2);
+      }
+      for (let sy = botY + 16; sy < floorY() - 8; sy += 24) {
+        ctx.fillRect(x + 12, sy, OBSTACLE_WIDTH - 24, 2);
+      }
+
+    } else if (currentStyle === 'marina') {
+      // --- MARINA: Seaside Pier Columns & Brass Lanterns ---
+      // Weathered navy pier wood
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.fillRect(x, botY, OBSTACLE_WIDTH, botH);
+
+      // Warm timber highlights
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(x + 8, 0, 8, topH);
+      ctx.fillRect(x + 8, botY, 8, botH);
+
+      // Brass lantern caps
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(x - 2, topH - 8, OBSTACLE_WIDTH + 4, 8);
+      ctx.fillRect(x - 2, botY, OBSTACLE_WIDTH + 4, 8);
+
+      // Soft warm amber beacon
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.4)';
+      ctx.beginPath();
+      ctx.arc(x + OBSTACLE_WIDTH / 2, topH - 14, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (currentStyle === 'valeria') {
+      // --- VALERIA: Heavy Arena Trussing & Ring Posts ---
+      // Heavy matte steel column
+      ctx.fillStyle = '#1e2029';
+      ctx.fillRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.fillRect(x, botY, OBSTACLE_WIDTH, botH);
+
+      // Industrial cross-hatching
+      ctx.strokeStyle = '#474c60';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let sy = 0; sy < topH - 20; sy += 30) {
+        ctx.moveTo(x, sy);
+        ctx.lineTo(x + OBSTACLE_WIDTH, sy + 30);
+      }
+      for (let sy = botY; sy < floorY() - 20; sy += 30) {
+        ctx.moveTo(x, sy);
+        ctx.lineTo(x + OBSTACLE_WIDTH, sy + 30);
+      }
+      ctx.stroke();
+
+      // Padded red championship bumper at the gap
+      ctx.fillStyle = '#e63946';
+      ctx.fillRect(x - 2, topH - 10, OBSTACLE_WIDTH + 4, 10);
+      ctx.fillRect(x - 2, botY, OBSTACLE_WIDTH + 4, 10);
+
+    } else if (currentStyle === 'eva') {
+      // --- EVA: 35mm Analog Film Strips & Frame Gates ---
+      // Deep monochrome film base
+      ctx.fillStyle = '#141416';
+      ctx.fillRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.fillRect(x, botY, OBSTACLE_WIDTH, botH);
+
+      // Film sprocket perforations along both edges
+      ctx.fillStyle = '#f0f0f5';
+      for (let sy = 8; sy < topH - 10; sy += 18) {
+        ctx.fillRect(x + 4, sy, 5, 8);
+        ctx.fillRect(x + OBSTACLE_WIDTH - 9, sy, 5, 8);
+      }
+      for (let sy = botY + 8; sy < floorY() - 10; sy += 18) {
+        ctx.fillRect(x + 4, sy, 5, 8);
+        ctx.fillRect(x + OBSTACLE_WIDTH - 9, sy, 5, 8);
+      }
+
+      // Silver frame borders
+      ctx.fillStyle = '#a6b0c3';
+      ctx.fillRect(x - 2, topH - 6, OBSTACLE_WIDTH + 4, 6);
+      ctx.fillRect(x - 2, botY, OBSTACLE_WIDTH + 4, 6);
+
+    } else {
+      // --- CLASSIC: Clean Green Pipes with Polished Caps ---
+      const capX = -PIPE_CAP_OVERHANG;
+      const capW = OBSTACLE_WIDTH + PIPE_CAP_OVERHANG * 2;
+      ctx.fillStyle = theme.pipe;
+      ctx.fillRect(x, 0, OBSTACLE_WIDTH, topH);
+      ctx.fillRect(x, botY, OBSTACLE_WIDTH, botH);
+
+      ctx.fillStyle = theme.pipeHighlight;
+      ctx.fillRect(x + PIPE_HIGHLIGHT_X, 0, PIPE_HIGHLIGHT_WIDTH, topH);
+      ctx.fillRect(x + PIPE_HIGHLIGHT_X, botY, PIPE_HIGHLIGHT_WIDTH, botH);
+
+      ctx.fillStyle = theme.pipeCap;
+      ctx.fillRect(x + capX, topH - PIPE_CAP_HEIGHT, capW, PIPE_CAP_HEIGHT);
+      ctx.fillRect(x + capX, botY, capW, PIPE_CAP_HEIGHT);
+    }
   }
 }
 
@@ -119,7 +269,10 @@ function circleHitsRect(cx, cy, r, rx, ry, rw, rh) {
 }
 
 export function hits(playerY) {
-  const r = PLAYER_RADIUS - PLAYER_HITBOX_FORGIVENESS;
+  const forgiveness = game.cozyMode
+    ? COZY_HITBOX_FORGIVENESS
+    : (currentProfile ? currentProfile.hitboxForgiveness : PLAYER_HITBOX_FORGIVENESS);
+  const r = PLAYER_RADIUS - forgiveness;
 
   for (const o of obstacles) {
     if (
@@ -133,10 +286,11 @@ export function hits(playerY) {
   return false;
 }
 
-// Distance between the player's hitbox and the nearer gap edge of any pipe
-// currently overlapping the player's column; Infinity when none overlaps.
 export function gapClearance(playerY) {
-  const r = PLAYER_RADIUS - PLAYER_HITBOX_FORGIVENESS;
+  const forgiveness = game.cozyMode
+    ? COZY_HITBOX_FORGIVENESS
+    : (currentProfile ? currentProfile.hitboxForgiveness : PLAYER_HITBOX_FORGIVENESS);
+  const r = PLAYER_RADIUS - forgiveness;
   let best = Infinity;
   for (const o of obstacles) {
     if (o.x > PLAYER_X + r || o.x + OBSTACLE_WIDTH < PLAYER_X - r) continue;
